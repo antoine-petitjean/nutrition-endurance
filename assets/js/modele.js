@@ -38,6 +38,7 @@ import {
   VIDANGE_GASTRIQUE,
   METABOLISME_GLUCIDIQUE,
   SUDATION,
+  INTENSITE,
   SEUILS,
   FACTEUR_TERRAIN,
   PLAGES,
@@ -212,6 +213,50 @@ export function puissanceMetabolique({
 /* ========================================================================== */
 /* ÉTAPE 3 — Répartition glucides / lipides                                   */
 /* ========================================================================== */
+
+/**
+ * Déduit l'intensité relative (% de VO₂max) de l'allure visée et de la VMA.
+ * L'utilisateur ne saisit plus ce pourcentage : le moteur en a besoin, pas
+ * lui (voir CLAUDE.md §3.3–3.4, bloc 2).
+ *
+ * On applique l'équation métabolique ACSM (VO2 = 3.5 + 0.2·v, v en m/min)
+ * DEUX fois — à l'allure cible et à la VMA — puis on fait le rapport :
+ *
+ *   pctVO2max = 100 × (3.5 + 0.2·vCible) / (3.5 + 0.2·vVMA)
+ *
+ * Pourquoi la forme RAPPORT et pas « VO2 de l'allure / VO2max mesurée » :
+ * l'équation ACSM surestime la VO₂max des athlètes d'environ 15 %
+ * (Koutlianos et coll. 2013). En divisant deux applications de la MÊME
+ * équation, ce biais — pour peu qu'il soit à peu près multiplicatif sur la
+ * plage d'allures — se simplifie en grande partie. C'est ce qui rend la
+ * forme rapport plus robuste que la forme absolue, et qui limite l'erreur
+ * évoquée dans sources.html.
+ *
+ * VMA : celle renseignée par le coureur si elle est fournie, sinon la
+ * valeur par défaut de son niveau (hypothèse large — d'où le champ
+ * optionnel « VMA connue »).
+ *
+ * @param {{
+ *   vitesseMMin: number,
+ *   niveau: 'debutant'|'regulier'|'confirme'|'elite',
+ *   vmaConnueKmh?: number|null
+ * }} params
+ * @returns {number} % de VO₂max, borné à PLAGES.intensitePctVO2max
+ */
+export function deduireIntensitePctVO2max({ vitesseMMin, niveau, vmaConnueKmh = null }) {
+  const vmaKmh =
+    vmaConnueKmh && vmaConnueKmh > 0
+      ? vmaConnueKmh
+      : INTENSITE.VMA_DEFAUT_PAR_NIVEAU_KMH[niveau] ??
+        INTENSITE.VMA_DEFAUT_PAR_NIVEAU_KMH.regulier;
+  const vmaMMin = (vmaKmh * 1000) / 60;
+
+  const vo2Cible = INTENSITE.ACSM_VO2_REPOS + INTENSITE.ACSM_VO2_PAR_M_MIN * vitesseMMin;
+  const vo2Max = INTENSITE.ACSM_VO2_REPOS + INTENSITE.ACSM_VO2_PAR_M_MIN * vmaMMin;
+
+  const pct = vo2Max > 0 ? (100 * vo2Cible) / vo2Max : 0;
+  return borner(pct, PLAGES.intensitePctVO2max[0], PLAGES.intensitePctVO2max[1]);
+}
 
 /**
  * Fraction de l'énergie fournie par les GLUCIDES (le reste vient des lipides),

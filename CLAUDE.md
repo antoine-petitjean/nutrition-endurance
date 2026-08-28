@@ -524,6 +524,13 @@ qu'elles, jusqu'à ce qu'Antoine en valide d'autres.
 - **Du Bois D. & Du Bois E.F. (1916)**, *A formula to estimate the approximate
   surface area if height and weight be known*, Archives of Internal Medicine.
   Formule de surface corporelle utilisée dans le modèle de sudation.
+- **ACSM's Guidelines for Exercise Testing and Prescription**, American College
+  of Sports Medicine — équations métaboliques (VO₂ = 3,5 + 0,2·v pour la course
+  à plat, v en m/min). Sert à déduire le % de VO₂max depuis l'allure visée.
+  Vérification accessible et discussion de ses limites (surestimation de ~15 %
+  chez les athlètes) : **Koutlianos N. et coll. (2013)**, *Indirect estimation
+  of VO2max in athletes by ACSM's equation: valid or not?*, Hippokratia
+  17(2):136-140. https://www.hippokratia.gr/images/PDF/17-2/Hippokratia_2_2013_136.pdf
 - **Gatorade Sports Science Institute — SSE-161**, *Fluid and Electrolyte Needs
   for Training, Competition, and Recovery*. Fourchettes de taux de sudation
   (0,5–2,0 L/h), concentration en sodium de la sueur (10–90 mmol/L), conversion.

@@ -136,6 +136,32 @@ export const CROSSOVER = Object.freeze({
 });
 
 /* -------------------------------------------------------------------------- */
+/* 4 bis. Intensité relative — déduction du % VO₂max depuis l'allure         */
+/* -------------------------------------------------------------------------- */
+
+export const INTENSITE = Object.freeze({
+  // Équation métabolique de la course à plat (ACSM) : consommation d'O₂ en
+  // ml/kg/min à partir de la vitesse en m/min.
+  //   VO2 = ACSM_VO2_REPOS + ACSM_VO2_PAR_M_MIN × vitesse
+  // [ACSM's Guidelines for Exercise Testing and Prescription — équations
+  //  métaboliques. Vérification et discussion des limites : Koutlianos N.
+  //  et coll. (2013), Hippokratia 17(2):136-140.]
+  ACSM_VO2_REPOS: 3.5, // ml/kg/min (métabolisme de repos)
+  ACSM_VO2_PAR_M_MIN: 0.2, // ml/kg/min par (m/min) de course à plat
+
+  // VMA (vitesse maximale aérobie) par défaut selon le niveau, en km/h.
+  // Utilisée quand le coureur ne renseigne pas sa VMA.
+  // // HYPOTHÈSE DE MODÉLISATION — ordres de grandeur du coaching amateur.
+  //   fourchettes : debutant 11–14 · regulier 15–17 · confirme 17–19 · elite 19–22
+  VMA_DEFAUT_PAR_NIVEAU_KMH: Object.freeze({
+    debutant: 13,
+    regulier: 16,
+    confirme: 18,
+    elite: 20.5,
+  }),
+});
+
+/* -------------------------------------------------------------------------- */
 /* 5. Réserves de glycogène — compartiment MUSCULAIRE                        */
 /* -------------------------------------------------------------------------- */
 
@@ -485,6 +511,7 @@ export const PLAGES = Object.freeze({
   massePorteeKg: Object.freeze([0, 15]), // ceinture / sac / eau
   distanceKm: Object.freeze([5, 100]),
   intensitePctVO2max: Object.freeze([50, 95]),
+  vmaConnueKmh: Object.freeze([8, 25]), // champ optionnel du bloc 2
 
   // La température agit sur la sudation (dès la phase 1) et sur la vidange
   // gastrique. Plage étendue à 45 °C pour tester les cas extrêmes de chaleur.
