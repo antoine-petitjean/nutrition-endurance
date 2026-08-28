@@ -324,6 +324,63 @@ function planRegulier({ debutMin, pasMin, glucidesG, type, eauMl }) {
   );
 }
 
+// --- Conservation de la masse et de l'énergie ---
+{
+  const r = marathon([]); // marathon sans apport : gros déficit garanti
+  const d = r.temps.minutes.length - 1;
+  const somme = (arr) => arr.reduce((a, b) => a + b, 0);
+
+  // Masse : glucides oxydés = glycogène puisé (muscle + foie) + exogène utilisé.
+  const glycogenePuiseG =
+    r.meta.reservesInitiales.muscleG - r.glycogene.muscleG[d] +
+    (r.meta.reservesInitiales.foieG - r.glycogene.foieG[d]);
+  const exogeneUtiliseG =
+    r.glucides.absorptionCumuleeG[d] - r.glucides.excedentAbsorbeCumuleG[d];
+  const oxydesG = somme(r.glucides.oxydationGlucidesGMin);
+  verifie(
+    'conservation masse — glucides oxydés = glycogène puisé + exogène utilisé',
+    proche(oxydesG, glycogenePuiseG + exogeneUtiliseG, 0.5),
+    `${oxydesG.toFixed(1)} vs ${(glycogenePuiseG + exogeneUtiliseG).toFixed(1)}`,
+  );
+
+  // Énergie : dépense RÉALISÉE = part lipidique (allure cible) + glucides oxydés.
+  const partLipidiqueKcal = somme(
+    r.energie.puissanceKcalMin.map((p, i) => (1 - r.energie.fractionGlucides[i]) * p),
+  );
+  const realiseeKcal = somme(r.energie.puissanceRealisableKcalMin);
+  verifie(
+    'conservation énergie — dépense réalisée = lipides + glucides oxydés',
+    proche(realiseeKcal, partLipidiqueKcal + oxydesG * 4, 1),
+    `${realiseeKcal.toFixed(0)} vs ${(partLipidiqueKcal + oxydesG * 4).toFixed(0)}`,
+  );
+
+  // Le déficit est réel : sans apport, la dépense réalisée < dépense cible.
+  verifie(
+    'sans apport — dépense réalisée nettement sous la cible',
+    r.synthese.depenseRealiseeKcal < r.synthese.depenseTotaleKcal - 50,
+    `réalisée ${r.synthese.depenseRealiseeKcal} / cible ${r.synthese.depenseTotaleKcal}`,
+  );
+  verifie(
+    'sans apport — diagnostic ALLURE_INTENABLE émis',
+    r.diagnostics.some((diag) => diag.code === 'ALLURE_INTENABLE'),
+  );
+}
+
+// --- Ravitaillement suffisant : aucun déficit, réalisée ≈ cible ---
+{
+  const plan = planRegulier({ debutMin: 10, pasMin: 15, glucidesG: 22, type: 'glucose-fructose', eauMl: 250 });
+  const r = marathon(plan);
+  verifie(
+    '90 g/h — dépense réalisée = dépense cible (aucun déficit)',
+    proche(r.synthese.depenseRealiseeKcal, r.synthese.depenseTotaleKcal, 5),
+    `réalisée ${r.synthese.depenseRealiseeKcal} / cible ${r.synthese.depenseTotaleKcal}`,
+  );
+  verifie(
+    '90 g/h — pas de diagnostic ALLURE_INTENABLE',
+    !r.diagnostics.some((diag) => diag.code === 'ALLURE_INTENABLE'),
+  );
+}
+
 // --- Cas limite §3.5.8 : vitesse nulle ne casse rien ---
 {
   const r = simuler({

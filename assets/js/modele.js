@@ -564,13 +564,16 @@ export function simulerScenario(entrees, plan) {
   let estomacEauMl = 0;
   let lumenGlucoseG = 0;
   let lumenFructoseG = 0;
-  let depenseCumuleeKcalCourant = 0;
+  let depenseCumuleeKcalCourant = 0; // dépense À L'ALLURE CIBLE (ce que la course demande)
+  let depenseRealiseeCumuleeKcalCourant = 0; // dépense RÉELLEMENT produite (substrat disponible)
   let ingereCumuleGCourant = 0;
   let absorptionCumuleeGCourant = 0;
   let oxydationCumuleeGlucidesG = 0;
   let excedentAbsorbeCumuleGCourant = 0;
   let premiereHypoglycemieMin = null;
   let premierMurMuscleMin = null;
+  let premiereAllureIntenableMin = null;
+  let minFractionAllureTenable = 1;
 
   /* --- Séries (longueur dureeMin + 1) --- */
   const N = dureeMin + 1;
@@ -590,6 +593,10 @@ export function simulerScenario(entrees, plan) {
   const absorptionCumuleeG = nouvelleSerie();
   const oxydationGlucidesGMin = nouvelleSerie();
   const excedentAbsorbeCumuleG = nouvelleSerie();
+  const deficitGlucidesGMin = nouvelleSerie();
+  const puissanceRealisableKcalMin = nouvelleSerie();
+  const fractionAllureTenableSerie = nouvelleSerie();
+  const depenseRealiseeCumuleeKcal = nouvelleSerie();
   const muscleGSerie = nouvelleSerie();
   const foieGSerie = nouvelleSerie();
   const muscleFraction = nouvelleSerie();
@@ -597,12 +604,24 @@ export function simulerScenario(entrees, plan) {
 
   /** Écrit l'état courant dans toutes les séries à l'index i. */
   function enregistre(i, debits) {
-    const { puissance = 0, fCHO = 0, absG = 0, oxyG = 0 } = debits ?? {};
+    const {
+      puissance = 0,
+      fCHO = 0,
+      absG = 0,
+      oxyG = 0,
+      deficitG = 0,
+      puissanceRealisable = 0,
+      fractionTenable = 1,
+    } = debits ?? {};
     minutes[i] = i;
     distanceKmSerie[i] = Math.min((vitesseMPerMin * i) / 1000, distanceKm) || 0;
     puissanceKcalMin[i] = puissance;
     fractionGlucidesSerie[i] = fCHO;
     depenseCumuleeKcal[i] = depenseCumuleeKcalCourant;
+    deficitGlucidesGMin[i] = deficitG;
+    puissanceRealisableKcalMin[i] = puissanceRealisable;
+    fractionAllureTenableSerie[i] = fractionTenable;
+    depenseRealiseeCumuleeKcal[i] = depenseRealiseeCumuleeKcalCourant;
     ingereCumuleG[i] = ingereCumuleGCourant;
     estomacGSerie[i] = estomacGlucoseG + estomacFructoseG;
     estomacEauMlSerie[i] = estomacEauMl;
@@ -737,8 +756,45 @@ export function simulerScenario(entrees, plan) {
       depuisAbsorbeSangG + depuisFoieG + depuisAbsorbeMuscleG + depuisMuscleGlycogeneG;
     oxydationCumuleeGlucidesG += oxyG;
 
-    /* (6) État après la minute m */
-    enregistre(m + 1, { puissance, fCHO, absG: absorbeG, oxyG });
+    /* (6) Déficit glucidique → allure réellement tenable
+     *
+     * Quand ni l'absorbé, ni le foie, ni le glycogène musculaire ne
+     * couvrent le besoin glucidique du pas, la part manquante N'EST PAS
+     * produite : le coureur ralentit. On ne facture donc que la puissance
+     * réellement soutenue. Les lipides, eux, couvrent toujours leur part
+     * (les réserves de graisse ne limitent pas un marathon).
+     *
+     *   puissance réalisable = part lipidique (allure cible) + glucides oxydés
+     *                        = puissance cible − énergie du déficit glucidique
+     *
+     * Simplification : la part lipidique reste calculée à l'allure cible.
+     * Modéliser le ralentissement effectif de l'allure (et donc de la
+     * distance parcourue) viendra avec la déduction d'intensité.
+     */
+    const deficitGlucidesG = deficitSangG + deficitMuscleG;
+    const deficitChoKcal = deficitGlucidesG * CONVERSIONS.KCAL_PAR_G_GLYCOGENE;
+    const puissanceRealisable = puissance - deficitChoKcal;
+    const fractionTenable =
+      puissance > 0 ? borner(puissanceRealisable / puissance, 0, 1) : 1;
+
+    depenseRealiseeCumuleeKcalCourant += puissanceRealisable;
+    if (fractionTenable < minFractionAllureTenable) {
+      minFractionAllureTenable = fractionTenable;
+    }
+    if (deficitGlucidesG > 1e-6 && premiereAllureIntenableMin === null) {
+      premiereAllureIntenableMin = m + 1;
+    }
+
+    /* (7) État après la minute m */
+    enregistre(m + 1, {
+      puissance,
+      fCHO,
+      absG: absorbeG,
+      oxyG,
+      deficitG: deficitGlucidesG,
+      puissanceRealisable,
+      fractionTenable,
+    });
   }
 
   return {
@@ -749,6 +805,8 @@ export function simulerScenario(entrees, plan) {
     foieInitialG,
     premiereHypoglycemieMin,
     premierMurMuscleMin,
+    premiereAllureIntenableMin,
+    minFractionAllureTenable,
     oxydationCumuleeGlucidesG,
 
     minutes,
@@ -756,6 +814,10 @@ export function simulerScenario(entrees, plan) {
     puissanceKcalMin,
     fractionGlucides: fractionGlucidesSerie,
     depenseCumuleeKcal,
+    deficitGlucidesGMin,
+    puissanceRealisableKcalMin,
+    fractionAllureTenable: fractionAllureTenableSerie,
+    depenseRealiseeCumuleeKcal,
     ingereCumuleG,
     estomacG: estomacGSerie,
     estomacEauMl: estomacEauMlSerie,
@@ -884,6 +946,15 @@ export function simuler(entrees) {
       km: kmA(reel, reel.premierMurMuscleMin),
     });
   }
+  if (reel.premiereAllureIntenableMin !== null) {
+    diagnostics.push({
+      code: 'ALLURE_INTENABLE',
+      gravite: 'critique',
+      minute: reel.premiereAllureIntenableMin,
+      km: kmA(reel, reel.premiereAllureIntenableMin),
+      valeurs: { fractionMinTenable: arrondi(reel.minFractionAllureTenable, 2) },
+    });
+  }
   if (aReel.foie.epuisement) {
     diagnostics.push({ code: 'EPUISEMENT_FOIE', gravite: 'critique', ...aReel.foie.epuisement });
   }
@@ -920,9 +991,13 @@ export function simuler(entrees) {
     },
 
     energie: {
-      puissanceKcalMin: reel.puissanceKcalMin,
+      puissanceKcalMin: reel.puissanceKcalMin, // à l'allure cible
+      puissanceRealisableKcalMin: reel.puissanceRealisableKcalMin, // réellement soutenue
+      fractionAllureTenable: reel.fractionAllureTenable, // réalisable / cible, dans [0, 1]
+      deficitGlucidesGMin: reel.deficitGlucidesGMin, // glucides demandés mais introuvables
       fractionGlucides: reel.fractionGlucides,
-      depenseCumuleeKcal: reel.depenseCumuleeKcal,
+      depenseCumuleeKcal: reel.depenseCumuleeKcal, // cumul à l'allure cible
+      depenseRealiseeCumuleeKcal: reel.depenseRealiseeCumuleeKcal, // cumul réellement produit
     },
 
     glucides: {
@@ -971,7 +1046,16 @@ export function simuler(entrees) {
     diagnostics,
 
     synthese: {
-      depenseTotaleKcal: arrondi(reel.depenseCumuleeKcal[dernier], 0),
+      depenseTotaleKcal: arrondi(reel.depenseCumuleeKcal[dernier], 0), // à l'allure cible
+      depenseRealiseeKcal: arrondi(reel.depenseRealiseeCumuleeKcal[dernier], 0),
+      allureIntenable:
+        reel.premiereAllureIntenableMin === null
+          ? null
+          : {
+              minute: reel.premiereAllureIntenableMin,
+              km: kmA(reel, reel.premiereAllureIntenableMin),
+              fractionMinTenable: arrondi(reel.minFractionAllureTenable, 2),
+            },
       glucidesIngeresG: arrondi(reel.ingereCumuleG[dernier], 0),
       glucidesAbsorbesG: arrondi(reel.absorptionCumuleeG[dernier], 0),
       glucidesOxydesG: arrondi(reel.oxydationCumuleeGlucidesG, 0),
