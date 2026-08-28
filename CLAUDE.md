@@ -254,18 +254,19 @@ Sous-module `sudation.js`, importé par `modele.js`. Constantes dans
 surfaceCorporelleM2 = 0.007184 × taille_cm^0.725 × masse_kg^0.425
   [Du Bois & Du Bois, 1916 — contrôle : 175 cm / 70 kg → 1.85 m²]
 
-chaleurProduiteKcalH       = puissance × 60 × FRACTION_CHALEUR
+chaleurProduiteKcalH   = puissance × 60 × FRACTION_CHALEUR
   FRACTION_CHALEUR = 0.78          // 1 − rendement mécanique ; HYPOTHÈSE 0.75–0.80
-chaleurNonEvaporativeKcalH = COEFF_ECHANGE × surfaceCorporelleM2
-                             × max(0, T_PEAU − temperatureC) × 0.86
+chaleurSecheKcalH      = COEFF_ECHANGE × surfaceCorporelleM2
+                         × (T_PEAU − temperatureC) × 0.86
   T_PEAU = 33 °C
   COEFF_ECHANGE = 15 W/m²/K        // convection + rayonnement ; HYPOTHÈSE 8–25
   0.86 = conversion W → kcal/h
-chaleurAEvaporerKcalH = max(0, produite − nonEvaporative)
-sudationLParH = chaleurAEvaporer / (CHALEUR_LATENTE × EFFICACITE)
+  // PAS de max(0, …) : au-dessus de 33 °C l'air réchauffe, la valeur devient
+  // négative et s'ajoute à la charge à évaporer.
+besoinEvaporatifLParH = max(0, produite − sèche) / (CHALEUR_LATENTE × EFFICACITE)
   CHALEUR_LATENTE_KCAL_PAR_L = 580 // ≈ 2426 J/g [physique standard]
   EFFICACITE_EVAPORATIVE = 0.80    // une partie goutte ; HYPOTHÈSE 0.6–0.9
-  → borné à [0.3, 3.0] L/h         [GSSI SSE-161 : 0.5–2.0 typique, >3.0 exceptionnel]
+sudationLParH = borner(besoinEvaporatifLParH, 0.3, 3.0)   [GSSI SSE-161 : 0.5–2.0 typique]
 
 sodiumSueurMmolL = { faible: 20, moyen: 40, eleve: 70 }   [GSSI SSE-161 : 10–90]
 MG_PAR_MMOL_SODIUM = 22.99                                 [GSSI SSE-161]
@@ -273,12 +274,20 @@ SEUIL_DESHYDRATATION_PCT_MASSE = 2   // au-delà, performance dégradée
 ```
 
 Cas de contrôle des tests (70 kg, 175 cm, marathon 3 h 30) :
-15 °C → ~0.5 L/h · 25 °C → ~0.9 L/h · 32 °C → ~1.4 L/h, tous dans 0.5–2.0 L/h.
-**Si ce n'est pas le cas, le dire à Antoine — ne pas ajuster les constantes pour
-que ça passe.**
+15 °C → ~0.5 L/h · 25 °C → ~1.0 L/h · 32 °C → ~1.4 L/h.
+**Si ça diverge, le dire à Antoine — ne pas ajuster les constantes pour que ça
+passe.** La sudation doit **continuer de croître au-delà de 33 °C**.
 
-La déshydratation (perte de masse en %) alimente le hook `perteMassePct` de
-`facteurVidangeGastrique()`, en attente depuis le début.
+- La déshydratation (perte de masse NETTE = sueur − eau bue) alimente le hook
+  `perteMassePct` de `facteurVidangeGastrique()`, enfin utilisé. Diagnostic
+  `DESHYDRATATION` à −2 %.
+- Diagnostic **`RISQUE_HYPERTHERMIE`** (gravité critique) quand le besoin
+  évaporatif dépasse `SUDATION_MAX_L_PAR_H` : le corps ne peut plus évacuer sa
+  chaleur. **Présenté comme une urgence, jamais comme un paramètre à ajuster.**
+- **Limite connue** : l'humidité n'est pas modélisée → le modèle **sous-estime
+  le risque en chaleur humide**. Conséquence interface : **au-delà de 30 °C,
+  avertissement fixe sur le coup de chaleur**, indépendant des chiffres. Un
+  nombre rassurant ne tient pas lieu d'avertissement. (Code + `sources.html`.)
 
 ### 3.3 et 3.4 — L'interface : quatre blocs
 

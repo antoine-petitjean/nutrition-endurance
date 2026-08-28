@@ -42,7 +42,11 @@ import {
   FACTEUR_TERRAIN,
   PLAGES,
 } from './constantes.js';
-import { surfaceCorporelleM2, tauxSudationLParH, sodiumSueurMgParL } from './sudation.js';
+import {
+  surfaceCorporelleM2,
+  besoinEvaporatifLParH,
+  sodiumSueurMgParL,
+} from './sudation.js';
 
 /* ========================================================================== */
 /* ÉTAPE 1 — Utilitaires purs                                                 */
@@ -531,7 +535,11 @@ export function simulerScenario(entrees, plan) {
   const terrain = entrees.terrain ?? 'route';
   const penteMoyenneTangente = entrees.penteMoyenneTangente ?? 0;
   const tailleCm = borner(profil.tailleCm ?? 175, PLAGES.tailleCm[0], PLAGES.tailleCm[1]);
-  const temperatureC = course.temperatureC ?? 15;
+  const temperatureC = borner(
+    course.temperatureC ?? 15,
+    PLAGES.temperatureC[0],
+    PLAGES.temperatureC[1],
+  );
   const sueurSalee = profil.sueurSalee ?? 'moyen';
 
   /* --- Constantes du scénario (invariantes minute après minute en phase 1) --- */
@@ -589,6 +597,7 @@ export function simulerScenario(entrees, plan) {
   let eauAbsorbeeCumuleeL = 0; // eau bue, vidée de l'estomac (supposée absorbée)
   let sodiumPerduCumuleeMg = 0;
   let premiereDeshydratationMin = null; // 1re minute sous −2 % de masse (bilan NET)
+  let premiereHyperthermieMin = null; // 1re minute où le besoin évaporatif dépasse le max
 
   /* --- Séries (longueur dureeMin + 1) --- */
   const N = dureeMin + 1;
@@ -704,11 +713,23 @@ export function simulerScenario(entrees, plan) {
     const besoinTotalG = (puissance * fCHO) / CONVERSIONS.KCAL_PAR_G_GLYCOGENE;
 
     /* (2 bis) Sudation : eau et sodium perdus pendant la minute */
-    const sudationLParH = tauxSudationLParH({
+    const besoinEvaporatifLH = besoinEvaporatifLParH({
       puissanceKcalMin: puissance,
       surfaceM2,
       temperatureC,
     });
+    const sudationLParH = borner(
+      besoinEvaporatifLH,
+      SUDATION.SUDATION_MIN_L_PAR_H,
+      SUDATION.SUDATION_MAX_L_PAR_H,
+    );
+    if (
+      premiereHyperthermieMin === null &&
+      besoinEvaporatifLH > SUDATION.SUDATION_MAX_L_PAR_H
+    ) {
+      // Le corps ne peut plus évacuer sa chaleur. Urgence, pas un réglage.
+      premiereHyperthermieMin = m + 1;
+    }
     eauPerdueCumuleeL += sudationLParH / 60;
     sodiumPerduCumuleeMg += (sudationLParH / 60) * sodiumSueurMgL;
     // Bilan NET : sueur perdue − eau bue déjà absorbée. 1 L ≈ 1 kg.
@@ -868,6 +889,7 @@ export function simulerScenario(entrees, plan) {
     nMinutesEnDeficit,
     sommeFractionTenableEnDeficit,
     premiereDeshydratationMin,
+    premiereHyperthermieMin,
     eauPerdueTotaleL: eauPerdueCumuleeL, // sueur brute
     eauAbsorbeeTotaleL: eauAbsorbeeCumuleeL, // eau bue
     sodiumPerduTotalMg: sodiumPerduCumuleeMg,
@@ -1021,6 +1043,16 @@ export function simuler(entrees) {
 
   /* --- Diagnostics (codes structurés, triés du plus grave au moins grave) --- */
   const diagnostics = [];
+  if (reel.premiereHyperthermieMin !== null) {
+    // URGENCE MÉDICALE. Ce n'est pas un paramètre à optimiser : le corps ne
+    // peut plus évacuer sa chaleur. L'interface le présente comme tel.
+    diagnostics.push({
+      code: 'RISQUE_HYPERTHERMIE',
+      gravite: 'critique',
+      minute: reel.premiereHyperthermieMin,
+      km: kmA(reel, reel.premiereHyperthermieMin),
+    });
+  }
   if (reel.premiereHypoglycemieMin !== null) {
     diagnostics.push({
       code: 'HYPOGLYCEMIE',
@@ -1187,6 +1219,10 @@ export function simuler(entrees) {
         reel.premiereDeshydratationMin === null
           ? null
           : { minute: reel.premiereDeshydratationMin, km: kmA(reel, reel.premiereDeshydratationMin) },
+      risqueHyperthermie:
+        reel.premiereHyperthermieMin === null
+          ? null
+          : { minute: reel.premiereHyperthermieMin, km: kmA(reel, reel.premiereHyperthermieMin) },
       surplusIntestinalFinG: arrondi(surplusIntestinalFinG, 0),
       surplusDigestifTotalFinG: arrondi(surplusDigestifTotalFinG, 0),
       excedentAbsorbeG: arrondi(reel.excedentAbsorbeCumuleG[dernier], 0),

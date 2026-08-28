@@ -486,10 +486,9 @@ export const PLAGES = Object.freeze({
   distanceKm: Object.freeze([5, 100]),
   intensitePctVO2max: Object.freeze([50, 95]),
 
-  // Conservé pour la phase 4. En phase 1, la température est RETIRÉE de
-  // l'interface (un curseur sans effet fait passer l'outil pour cassé) ;
-  // le paramètre et son hook restent dans le moteur.
-  temperatureC: Object.freeze([-5, 40]),
+  // La température agit sur la sudation (dès la phase 1) et sur la vidange
+  // gastrique. Plage étendue à 45 °C pour tester les cas extrêmes de chaleur.
+  temperatureC: Object.freeze([-5, 45]),
 });
 
 /* -------------------------------------------------------------------------- */

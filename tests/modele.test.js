@@ -27,9 +27,11 @@ import {
 } from '../assets/js/modele.js';
 import {
   surfaceCorporelleM2,
+  besoinEvaporatifLParH,
   tauxSudationLParH,
   sodiumSueurMgParL,
 } from '../assets/js/sudation.js';
+import { SUDATION } from '../assets/js/constantes.js';
 
 /* -------------------------------------------------------------------------- */
 /* Micro-outillage d'assertion                                               */
@@ -466,6 +468,54 @@ verifie(
   const chaud = tauxSudationLParH({ puissanceKcalMin: P, surfaceM2, temperatureC: 30 });
   const frais = tauxSudationLParH({ puissanceKcalMin: P, surfaceM2, temperatureC: 10 });
   verifie('sudation monotone en température', chaud > frais);
+}
+
+// Au-dessus de 33 °C, l'air réchauffe : la sudation doit CONTINUER de croître
+// (pas de plateau, plus de max(0, …) sur l'écart peau/air).
+{
+  const surfaceM2 = surfaceCorporelleM2({ tailleCm: 175, masseKg: 70 });
+  const P = 14;
+  let stricteCroissance = true;
+  let precedent = -Infinity;
+  for (let t = 30; t <= 45; t += 1) {
+    const l = tauxSudationLParH({ puissanceKcalMin: P, surfaceM2, temperatureC: t });
+    if (l <= precedent) stricteCroissance = false;
+    precedent = l;
+  }
+  verifie('la sudation croît strictement entre 30 et 45 °C', stricteCroissance);
+
+  const a35 = besoinEvaporatifLParH({ puissanceKcalMin: P, surfaceM2, temperatureC: 35 });
+  const a42 = besoinEvaporatifLParH({ puissanceKcalMin: P, surfaceM2, temperatureC: 42 });
+  verifie('42 °C demande nettement plus que 35 °C', a42 > a35 + 0.1, `${a35.toFixed(2)} → ${a42.toFixed(2)}`);
+}
+
+// Besoin évaporatif non borné vs taux de sudation borné.
+{
+  const besoin = besoinEvaporatifLParH({ puissanceKcalMin: 35, surfaceM2: 2, temperatureC: 42 });
+  const taux = tauxSudationLParH({ puissanceKcalMin: 35, surfaceM2: 2, temperatureC: 42 });
+  verifie('besoin évaporatif extrême > plafond physiologique', besoin > SUDATION.SUDATION_MAX_L_PAR_H);
+  verifie('taux de sudation borné au plafond', proche(taux, SUDATION.SUDATION_MAX_L_PAR_H, 1e-9));
+}
+
+// Diagnostic RISQUE_HYPERTHERMIE : coureur lourd, effort intense, chaleur
+// extrême → le corps ne peut plus évacuer sa chaleur.
+{
+  const canicule = simuler({
+    profil: { sexe: 'H', masseKg: 100, tailleCm: 180, niveau: 'confirme', recharge: 'non', entrainementIntestinal: 'occasionnel', sueurSalee: 'moyen', petitDejeuner: true },
+    course: { distanceKm: 10, vitesseMoyenneMPerMin: 10000 / 33, intensitePctVO2max: 92, temperatureC: 44 },
+    plan: [],
+  });
+  verifie(
+    'canicule + effort intense → diagnostic RISQUE_HYPERTHERMIE',
+    canicule.diagnostics.some((d) => d.code === 'RISQUE_HYPERTHERMIE'),
+    canicule.diagnostics.map((d) => d.code).join(','),
+  );
+  verifie(
+    'RISQUE_HYPERTHERMIE est en tête des diagnostics (le plus grave)',
+    canicule.diagnostics[0].code === 'RISQUE_HYPERTHERMIE',
+  );
+  verifie('marathon tempéré 15 °C → pas de RISQUE_HYPERTHERMIE',
+    !marathon([]).diagnostics.some((d) => d.code === 'RISQUE_HYPERTHERMIE'));
 }
 
 // Sodium de la sueur : 20 / 40 / 70 mmol/L × 22.99.
