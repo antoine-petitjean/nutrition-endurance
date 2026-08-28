@@ -68,6 +68,23 @@ précédente publiée et validée par Antoine.
 jamais un moteur bis.** Ajouter le trail en phase 3 doit consister à activer des
 modules et changer des valeurs par défaut, pas à réécrire les calculs.
 
+**Ajusté en cours de route** : le **bilan hydrique et sodique de base** (eau et
+sodium perdus) est avancé en phase 1 — le bloc 3 du simulateur en a besoin. Le
+**score de risque digestif** explicable reste en phase 4.
+
+### Ordre de travail de la phase 1 (fin)
+
+Le moteur (étapes 1 à 9) et une page de test texte/tableau sont faits. Reste,
+un commit par étape, arrêt et vérification navigateur après chacune :
+
+1. ~~Correction du déficit glucidique + conservation de l'énergie~~ ✔
+2. ~~Mise à jour de ce document~~ ✔ *(commit en cours)*
+3. Modèle de sudation et sodium + ses tests *(arrêt : vérifier 0.5 / 0.9 / 1.4 L/h)*
+4. Déduction de l'intensité depuis l'allure *(proposer la méthode d'abord)*
+5. Refonte de `simulateur.html` en quatre blocs
+6. Stratégies prédéfinies + tableau de course
+7. Bibliothèque d'aliments
+
 ---
 
 ## 3. PHASE 1 — Le simulateur (mode route)
@@ -76,11 +93,14 @@ modules et changer des valeurs par défaut, pas à réécrire les calculs.
 
 ```
 index.html                  Accueil minimal : le propos, un lien vers le simulateur
-simulateur.html             La page de l'outil
-sources.html                Bibliographie — uniquement des références vérifiées
+simulateur.html             La page de l'outil (quatre blocs, voir 3.4)
+sources.html                Références vérifiées + hypothèses de modélisation + limites connues
+troubles-digestifs.html     Page dédiée : surplus digestif, hyperglycémie (sortent du simulateur)
 assets/css/style.css        Design system : variables CSS, thèmes clair/sombre
 assets/js/constantes.js     TOUTES les constantes physiologiques, sourcées
 assets/js/modele.js         Le moteur. Aucune référence au DOM.
+assets/js/sudation.js       Sous-module du moteur : bilan hydrique et sodique (importé par modele.js)
+assets/js/aliments.js       Catalogue de familles d'aliments (Ciqual), recherche textuelle
 assets/js/graphique.js      Dessin SVG générique, réutilisable
 assets/js/simulateur.js     L'interface : lit les champs, appelle le moteur, dessine
 ```
@@ -201,10 +221,85 @@ C'est le point qui fait la crédibilité de l'outil. Chaîne :
 > sur la page — ne pas les présenter avec la même assurance que les plafonds
 > d'absorption, qui eux sont bien établis.
 
-### 3.3 Entrées de l'interface
+#### e. Déficit glucidique et allure tenable
 
-**Profil coureur** (persisté en `localStorage`, avec un numéro de version de
-schéma pour pouvoir migrer plus tard) :
+Quand ni l'absorbé, ni le foie, ni le glycogène musculaire ne couvrent le besoin
+glucidique du pas, la part manquante **n'est pas produite** : le coureur ralentit.
+Le moteur ne compte donc, comme **énergie soutenable**, que la puissance
+réellement fournie (part lipidique à l'allure cible + glucides oxydés).
+
+- **`depenseTotaleKcal`** = ce que la course coûte à l'allure visée. C'est le
+  chiffre affiché comme « ta dépense ». Il est quasi indépendant du scénario :
+  seul le **temps** change.
+- **`energieSoutenableKcal`** = ce que le coureur peut fournir à cette allure.
+  **Jamais présenté comme « ta dépense »** — c'est un plafond, pas un bilan.
+- **Minutes perdues** : sur la portion en déficit, temps = prévu / fraction
+  d'allure moyenne. `tempsEstimeMin` et `minutesPerduesEstimees` sont renvoyés
+  dans la synthèse et dans le diagnostic `ALLURE_INTENABLE`. **À présenter en
+  fourchette** (« environ 20 à 30 minutes »), jamais au chiffre près.
+
+> **Limite connue, à dire au lecteur (sources.html) :** quand le coureur
+> ralentit, son intensité relative baisse, la part lipidique augmente et le
+> déficit se réduit de lui-même. Cette boucle de rattrapage n'est pas modélisée.
+> Le modèle est donc **pessimiste après le point de rupture** : il décrit bien le
+> moment où l'allure lâche, moins bien la suite.
+
+#### f. Sudation et sodium
+
+Fondé sur la physique de la thermorégulation, pas sur une table arbitraire.
+Sous-module `sudation.js`, importé par `modele.js`. Constantes dans
+`constantes.js` (marquées `// HYPOTHÈSE` avec leur fourchette).
+
+```
+surfaceCorporelleM2 = 0.007184 × taille_cm^0.725 × masse_kg^0.425
+  [Du Bois & Du Bois, 1916 — contrôle : 175 cm / 70 kg → 1.85 m²]
+
+chaleurProduiteKcalH       = puissance × 60 × FRACTION_CHALEUR
+  FRACTION_CHALEUR = 0.78          // 1 − rendement mécanique ; HYPOTHÈSE 0.75–0.80
+chaleurNonEvaporativeKcalH = COEFF_ECHANGE × surfaceCorporelleM2
+                             × max(0, T_PEAU − temperatureC) × 0.86
+  T_PEAU = 33 °C
+  COEFF_ECHANGE = 15 W/m²/K        // convection + rayonnement ; HYPOTHÈSE 8–25
+  0.86 = conversion W → kcal/h
+chaleurAEvaporerKcalH = max(0, produite − nonEvaporative)
+sudationLParH = chaleurAEvaporer / (CHALEUR_LATENTE × EFFICACITE)
+  CHALEUR_LATENTE_KCAL_PAR_L = 580 // ≈ 2426 J/g [physique standard]
+  EFFICACITE_EVAPORATIVE = 0.80    // une partie goutte ; HYPOTHÈSE 0.6–0.9
+  → borné à [0.3, 3.0] L/h         [GSSI SSE-161 : 0.5–2.0 typique, >3.0 exceptionnel]
+
+sodiumSueurMmolL = { faible: 20, moyen: 40, eleve: 70 }   [GSSI SSE-161 : 10–90]
+MG_PAR_MMOL_SODIUM = 22.99                                 [GSSI SSE-161]
+SEUIL_DESHYDRATATION_PCT_MASSE = 2   // au-delà, performance dégradée
+```
+
+Cas de contrôle des tests (70 kg, 175 cm, marathon 3 h 30) :
+15 °C → ~0.5 L/h · 25 °C → ~0.9 L/h · 32 °C → ~1.4 L/h, tous dans 0.5–2.0 L/h.
+**Si ce n'est pas le cas, le dire à Antoine — ne pas ajuster les constantes pour
+que ça passe.**
+
+La déshydratation (perte de masse en %) alimente le hook `perteMassePct` de
+`facteurVidangeGastrique()`, en attente depuis le début.
+
+### 3.3 et 3.4 — L'interface : quatre blocs
+
+La page suit l'ordre du site : **comprendre ce que la course coûte, PUIS comment
+le couvrir.** Quatre blocs, dans cet ordre strict : profil et course (entrées,
+blocs 1–2), puis coût et couverture (sorties, blocs 3–4).
+
+**Chaque champ de profil et de course porte un bouton « pourquoi ça compte ? »**
+qui déplie deux à quatre phrases expliquant le **mécanisme**, pas la consigne.
+Exemples : la taille détermine la surface corporelle, donc la capacité à évacuer
+la chaleur ; le niveau → un muscle entraîné stocke plus de glycogène
+(110 → 150 mmol/kg) et oxyde plus de lipides ; la recharge glucidique = protocole
+de 24–48 h à 8–12 g/kg/j qui sur-remplit le muscle jusqu'à 200 mmol/kg ;
+l'entraînement intestinal augmente la densité des transporteurs, ça s'entraîne ;
+le petit-déjeuner → une nuit de jeûne vide ~la moitié du glycogène du foie.
+Les libellés de niveau sont explicités (« régulier : 3 à 4 sorties/semaine depuis
+plus d'un an »), jamais laissés à l'interprétation.
+
+#### BLOC 1 — Profil coureur
+
+Persisté en `localStorage` (avec numéro de version de schéma).
 
 | Paramètre | Plage | Défaut |
 |---|---|---|
@@ -215,47 +310,60 @@ schéma pour pouvoir migrer plus tard) :
 | Niveau | débutant / régulier / confirmé / élite | régulier |
 | Recharge glucidique | non / partielle / complète | non |
 | Entraînement intestinal | jamais / occasionnel / régulier | occasionnel |
-| Petit-déjeuner pris | oui / non | oui |
+| Sueur salée | faible / moyenne / élevée — « tu retrouves du sel blanc sur ta casquette ? » | moyenne |
+| Petit-déjeuner | case oui/non **+ zone de texte libre** de ce qui a été mangé | oui |
 
-**Course** :
+#### BLOC 2 — Course
 
 | Paramètre | Plage | Défaut |
 |---|---|---|
-| Distance | 5–100 km, avec raccourcis 10 km / semi / marathon | 42.195 |
-| Temps visé **ou** allure | l'un déduit l'autre | 3 h 30 |
-| Intensité | 50–95 % VO₂max, avec équivalences en ressenti | 75 |
+| Distance | 5–100 km, raccourcis 10 km / semi / marathon | 42.195 |
+| Temps visé | l'**allure au km** est affichée automatiquement à côté | 3 h 30 |
+| Heure de départ | agit par le délai depuis le dernier repas → état du foie au départ | — |
 | Température | −5 à 40 °C | 15 |
 
-**Plan de ravitaillement** : une liste de prises. Chaque prise = instant (min),
-quantité de glucides (g), type (glucose seul / glucose-fructose), volume d'eau
-associé (ml). Ajout, modification, suppression. Un bouton « plan automatique »
-qui propose une stratégie cohérente, ensuite modifiable à la main.
+**L'intensité en % de VO₂max est retirée de la saisie.** Elle est **déduite** de
+l'allure visée et du niveau, puis **affichée en langage humain** : « environ 75 %
+de tes capacités — allure où tu peux dire trois mots, pas une phrase ». Le moteur
+en a besoin, l'utilisateur ne doit pas avoir à la connaître. *La méthode de
+déduction est un point de modélisation : la proposer à Antoine avant de coder.*
 
-### 3.4 Sorties
+**Plan de ravitaillement** (utilisé par le bloc 4) : liste de prises. Chaque
+prise = instant (min), glucides (g), type (glucose seul / glucose-fructose),
+eau associée (ml), ratio glucose:fructose optionnel. Ajout / modif / suppression.
 
-Deux graphiques SVG synchronisés sur un axe temporel commun, avec un curseur
-partagé affichant toutes les valeurs à l'instant survolé.
+#### BLOC 3 — Ce que ta course va coûter *(avant tout ravitaillement)*
 
-**Graphique 1 — Réserves de glycogène**
-- Aire empilée : glycogène musculaire et hépatique restants, en grammes et en %
-  du stock initial
-- Zones de fond : verte au-dessus de 40 %, orange de 20 à 40 % (« la baisse
-  devient perceptible »), rouge sous 20 % (« zone du mur »)
-- **Courbe fantôme permanente du scénario sans ravitaillement** — c'est la
-  comparaison qui rend l'effet des prises lisible
-- Marqueur vertical à chaque prise, avec l'inflexion visible immédiatement
-- Annotation automatique du point de rupture : « sans apport, mur estimé au
-  km 31, à 2 h 47 »
+- **Bandeau** : dépense totale (kcal), glucides à brûler (g), eau à perdre (L),
+  sodium à perdre (mg).
+- **Les lipides brûlés sont affichés séparément**, étiquetés « information — tes
+  réserves de lipides ne limitent pas un marathon ». **Jamais** présentés comme
+  un besoin à couvrir.
+- **Graphique temporel** avec sélecteur de nutriment (glycogène musculaire /
+  hépatique / eau / sodium), annoté aux moments critiques (« km 21 — le foie est
+  vide, hypoglycémie », « km 36 — zone du mur »).
+- La **courbe du surplus digestif reste ici** : c'est le message central de
+  l'outil. Les troubles digestifs et l'hyperglycémie, eux, partent sur
+  `troubles-digestifs.html`.
+- **Courbe fantôme permanente** du scénario sans ravitaillement.
 
-**Graphique 2 — Glucides**
-- Trois courbes : quantité ingérée, absorption effective, ligne de plafond
-- Aire du contenu digestif en attente, avec zone d'alerte
+#### BLOC 4 — Comment le couvrir
 
-**Bandeau de synthèse** : dépense totale, glucides ingérés vs absorbés vs
-oxydés, verdict en une phrase, et trois conseils d'ajustement priorisés.
+- **Stratégies prédéfinies en cartes** : gels seuls / gels + boisson isotonique /
+  boisson isotonique seule / solide + boisson. Au clic, on saisit le grammage
+  (g par gel, concentration de la boisson) et le plan se génère.
+- **Tableau de course** — le livrable : « gel de 45 g tous les 7,2 km — km 7,2 /
+  14,4 / 21,6… ». Il change quand le grammage change. C'est ce qu'un coureur
+  emporte.
+- **Zone de texte libre** pour décrire ce qu'on veut manger → bibliothèque
+  d'aliments (3.6).
+- **Encadré** renvoyant vers `troubles-digestifs.html` : « au-delà de ce rythme,
+  le surplus s'accumule et se paie. »
 
 **Chaque chiffre affiché a un bouton « pourquoi ce chiffre ? »** qui déplie le
-calcul et les hypothèses. Aucun résultat ne tombe du ciel.
+calcul et les hypothèses. Aucun résultat ne tombe du ciel. Les graphiques sont
+en SVG dessiné main, synchronisés sur un axe temporel commun, avec curseur
+partagé et alternative en tableau de valeurs repliable.
 
 ### 3.5 Critères d'acceptation de la phase 1
 
@@ -274,6 +382,27 @@ Le simulateur est réussi si :
 7. Chaque graphique a son tableau de valeurs accessible au clavier.
 8. Les cas limites ne cassent rien : durée nulle, masse extrême, ingestion
    massive, température négative, aucune prise.
+
+### 3.6 Bibliothèque d'aliments — `assets/js/aliments.js`
+
+Un agent IA est impossible sur un site statique (clé d'accès exposée, tout le
+code est public). À la place, un **catalogue de familles d'aliments** (pas de
+marques, règle §4), chacune avec : glucides/100 g, ratio glucose:fructose
+approximatif, eau, sodium, et des **synonymes de recherche**.
+
+```js
+{ id: 'bonbon-gelifie', nom: 'Bonbon gélifié',
+  synonymes: ['haribo', 'fraise tagada', 'ourson', 'dragibus', 'bonbon'],
+  glucidesPour100g: 77, ratio: [1, 0.9], sodiumMgPour100g: 25 }
+```
+
+Recherche textuelle simple sur `nom` + `synonymes`. L'utilisateur tape « haribo »,
+le site répond « bonbon gélifié, 77 g de glucides pour 100 g → il te faut environ
+50 g par heure ». Hors ligne, vérifiable. **Chaque valeur sourcée : table Ciqual
+de l'ANSES pour les aliments courants — vérifier, ne pas inventer.**
+
+Même mécanisme pour le petit-déjeuner en texte libre : on reconnaît les aliments,
+on estime les glucides, on en déduit l'état du foie au départ.
 
 ---
 
@@ -383,6 +512,15 @@ qu'elles, jusqu'à ce qu'Antoine en valide d'autres.
 - **Romijn J.A. et coll. (1993)**, *Regulation of endogenous fat and carbohydrate
   metabolism in relation to exercise intensity and duration*, American Journal of
   Physiology. Points d'ancrage de la courbe glucides/lipides.
+- **Du Bois D. & Du Bois E.F. (1916)**, *A formula to estimate the approximate
+  surface area if height and weight be known*, Archives of Internal Medicine.
+  Formule de surface corporelle utilisée dans le modèle de sudation.
+- **Gatorade Sports Science Institute — SSE-161**, *Fluid and Electrolyte Needs
+  for Training, Competition, and Recovery*. Fourchettes de taux de sudation
+  (0,5–2,0 L/h), concentration en sodium de la sueur (10–90 mmol/L), conversion.
+- **ANSES — table Ciqual** de composition nutritionnelle des aliments.
+  Glucides, eau et sodium des familles d'aliments de `aliments.js`.
+  https://ciqual.anses.fr
 
 ---
 
