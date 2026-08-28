@@ -564,8 +564,8 @@ export function simulerScenario(entrees, plan) {
   let estomacEauMl = 0;
   let lumenGlucoseG = 0;
   let lumenFructoseG = 0;
-  let depenseCumuleeKcalCourant = 0; // dépense À L'ALLURE CIBLE (ce que la course demande)
-  let depenseRealiseeCumuleeKcalCourant = 0; // dépense RÉELLEMENT produite (substrat disponible)
+  let depenseCumuleeKcalCourant = 0; // ce que la course COÛTE à l'allure cible
+  let energieSoutenableCumuleeKcalCourant = 0; // ce que le coureur PEUT fournir à cette allure
   let ingereCumuleGCourant = 0;
   let absorptionCumuleeGCourant = 0;
   let oxydationCumuleeGlucidesG = 0;
@@ -574,6 +574,10 @@ export function simulerScenario(entrees, plan) {
   let premierMurMuscleMin = null;
   let premiereAllureIntenableMin = null;
   let minFractionAllureTenable = 1;
+  // Pour estimer les minutes perdues : on somme la fraction d'allure tenable
+  // sur les seules minutes en déficit.
+  let nMinutesEnDeficit = 0;
+  let sommeFractionTenableEnDeficit = 0;
 
   /* --- Séries (longueur dureeMin + 1) --- */
   const N = dureeMin + 1;
@@ -594,9 +598,9 @@ export function simulerScenario(entrees, plan) {
   const oxydationGlucidesGMin = nouvelleSerie();
   const excedentAbsorbeCumuleG = nouvelleSerie();
   const deficitGlucidesGMin = nouvelleSerie();
-  const puissanceRealisableKcalMin = nouvelleSerie();
+  const puissanceSoutenableKcalMin = nouvelleSerie();
   const fractionAllureTenableSerie = nouvelleSerie();
-  const depenseRealiseeCumuleeKcal = nouvelleSerie();
+  const energieSoutenableCumuleeKcal = nouvelleSerie();
   const muscleGSerie = nouvelleSerie();
   const foieGSerie = nouvelleSerie();
   const muscleFraction = nouvelleSerie();
@@ -610,7 +614,7 @@ export function simulerScenario(entrees, plan) {
       absG = 0,
       oxyG = 0,
       deficitG = 0,
-      puissanceRealisable = 0,
+      puissanceSoutenable = 0,
       fractionTenable = 1,
     } = debits ?? {};
     minutes[i] = i;
@@ -619,9 +623,9 @@ export function simulerScenario(entrees, plan) {
     fractionGlucidesSerie[i] = fCHO;
     depenseCumuleeKcal[i] = depenseCumuleeKcalCourant;
     deficitGlucidesGMin[i] = deficitG;
-    puissanceRealisableKcalMin[i] = puissanceRealisable;
+    puissanceSoutenableKcalMin[i] = puissanceSoutenable;
     fractionAllureTenableSerie[i] = fractionTenable;
-    depenseRealiseeCumuleeKcal[i] = depenseRealiseeCumuleeKcalCourant;
+    energieSoutenableCumuleeKcal[i] = energieSoutenableCumuleeKcalCourant;
     ingereCumuleG[i] = ingereCumuleGCourant;
     estomacGSerie[i] = estomacGlucoseG + estomacFructoseG;
     estomacEauMlSerie[i] = estomacEauMl;
@@ -760,26 +764,36 @@ export function simulerScenario(entrees, plan) {
      *
      * Quand ni l'absorbé, ni le foie, ni le glycogène musculaire ne
      * couvrent le besoin glucidique du pas, la part manquante N'EST PAS
-     * produite : le coureur ralentit. On ne facture donc que la puissance
-     * réellement soutenue. Les lipides, eux, couvrent toujours leur part
-     * (les réserves de graisse ne limitent pas un marathon).
+     * produite : le coureur ralentit. On ne compte donc, comme énergie
+     * SOUTENABLE, que la puissance réellement fournie. Les lipides, eux,
+     * couvrent toujours leur part (les réserves de graisse ne limitent pas
+     * un marathon).
      *
-     *   puissance réalisable = part lipidique (allure cible) + glucides oxydés
-     *                        = puissance cible − énergie du déficit glucidique
+     *   énergie soutenable = part lipidique (allure cible) + glucides oxydés
+     *                      = puissance cible − énergie du déficit glucidique
      *
-     * Simplification : la part lipidique reste calculée à l'allure cible.
-     * Modéliser le ralentissement effectif de l'allure (et donc de la
-     * distance parcourue) viendra avec la déduction d'intensité.
+     * ⚠ LIMITE CONNUE DU MODÈLE (voir aussi sources.html) :
+     * Quand le coureur ralentit, son intensité relative baisse, donc la part
+     * lipidique augmente et le déficit glucidique se réduit de lui-même.
+     * Cette boucle de rattrapage N'EST PAS modélisée : la part lipidique
+     * reste calculée à l'allure cible. Conséquence : le modèle est PESSIMISTE
+     * après le point de rupture. Il décrit bien le moment où l'allure lâche,
+     * moins bien ce qui se passe ensuite. On ne cherche pas à l'implémenter
+     * pour l'instant.
      */
     const deficitGlucidesG = deficitSangG + deficitMuscleG;
     const deficitChoKcal = deficitGlucidesG * CONVERSIONS.KCAL_PAR_G_GLYCOGENE;
-    const puissanceRealisable = puissance - deficitChoKcal;
+    const puissanceSoutenable = puissance - deficitChoKcal;
     const fractionTenable =
-      puissance > 0 ? borner(puissanceRealisable / puissance, 0, 1) : 1;
+      puissance > 0 ? borner(puissanceSoutenable / puissance, 0, 1) : 1;
 
-    depenseRealiseeCumuleeKcalCourant += puissanceRealisable;
+    energieSoutenableCumuleeKcalCourant += puissanceSoutenable;
     if (fractionTenable < minFractionAllureTenable) {
       minFractionAllureTenable = fractionTenable;
+    }
+    if (fractionTenable < 1 - 1e-9) {
+      nMinutesEnDeficit += 1;
+      sommeFractionTenableEnDeficit += fractionTenable;
     }
     if (deficitGlucidesG > 1e-6 && premiereAllureIntenableMin === null) {
       premiereAllureIntenableMin = m + 1;
@@ -792,7 +806,7 @@ export function simulerScenario(entrees, plan) {
       absG: absorbeG,
       oxyG,
       deficitG: deficitGlucidesG,
-      puissanceRealisable,
+      puissanceSoutenable,
       fractionTenable,
     });
   }
@@ -807,6 +821,8 @@ export function simulerScenario(entrees, plan) {
     premierMurMuscleMin,
     premiereAllureIntenableMin,
     minFractionAllureTenable,
+    nMinutesEnDeficit,
+    sommeFractionTenableEnDeficit,
     oxydationCumuleeGlucidesG,
 
     minutes,
@@ -815,9 +831,9 @@ export function simulerScenario(entrees, plan) {
     fractionGlucides: fractionGlucidesSerie,
     depenseCumuleeKcal,
     deficitGlucidesGMin,
-    puissanceRealisableKcalMin,
+    puissanceSoutenableKcalMin,
     fractionAllureTenable: fractionAllureTenableSerie,
-    depenseRealiseeCumuleeKcal,
+    energieSoutenableCumuleeKcal,
     ingereCumuleG,
     estomacG: estomacGSerie,
     estomacEauMl: estomacEauMlSerie,
@@ -928,6 +944,26 @@ export function simuler(entrees) {
   const surplusIntestinalFinG = reel.lumenTotalG[dernier];
   const surplusDigestifTotalFinG = surplusIntestinalFinG + reel.estomacG[dernier];
 
+  /* --- Minutes perdues à cause du déficit --------------------------------
+   * Le chiffre qu'un coureur comprend. Sur les minutes en déficit, la
+   * fraction d'allure tenable moyenne vaut `fractionMoyenneTenable`. Ce
+   * tronçon, prévu pour durer `nMinutesEnDeficit` minutes, en prend en
+   * réalité nMinutesEnDeficit / fractionMoyenne.
+   *   minutes perdues = nMinutesEnDeficit × (1 / fractionMoyenne − 1)
+   * ⚠ C'est une ESTIMATION grossière (voir la limite connue du modèle,
+   * modèle pessimiste après rupture). L'interface DOIT la présenter en
+   * fourchette (« environ 20 à 30 minutes »), jamais au chiffre près.
+   */
+  const fractionMoyenneTenable =
+    reel.nMinutesEnDeficit > 0
+      ? reel.sommeFractionTenableEnDeficit / reel.nMinutesEnDeficit
+      : 1;
+  const minutesPerduesEstimees =
+    reel.nMinutesEnDeficit > 0
+      ? reel.nMinutesEnDeficit * (1 / fractionMoyenneTenable - 1)
+      : 0;
+  const tempsEstimeMin = reel.dureeMin + minutesPerduesEstimees;
+
   /* --- Diagnostics (codes structurés, triés du plus grave au moins grave) --- */
   const diagnostics = [];
   if (reel.premiereHypoglycemieMin !== null) {
@@ -952,7 +988,11 @@ export function simuler(entrees) {
       gravite: 'critique',
       minute: reel.premiereAllureIntenableMin,
       km: kmA(reel, reel.premiereAllureIntenableMin),
-      valeurs: { fractionMinTenable: arrondi(reel.minFractionAllureTenable, 2) },
+      valeurs: {
+        fractionMinTenable: arrondi(reel.minFractionAllureTenable, 2),
+        minutesPerduesEstimees: arrondi(minutesPerduesEstimees, 0),
+        tempsEstimeMin: arrondi(tempsEstimeMin, 0),
+      },
     });
   }
   if (aReel.foie.epuisement) {
@@ -991,13 +1031,13 @@ export function simuler(entrees) {
     },
 
     energie: {
-      puissanceKcalMin: reel.puissanceKcalMin, // à l'allure cible
-      puissanceRealisableKcalMin: reel.puissanceRealisableKcalMin, // réellement soutenue
-      fractionAllureTenable: reel.fractionAllureTenable, // réalisable / cible, dans [0, 1]
+      puissanceKcalMin: reel.puissanceKcalMin, // ce que l'allure cible demande
+      puissanceSoutenableKcalMin: reel.puissanceSoutenableKcalMin, // ce que le coureur peut fournir
+      fractionAllureTenable: reel.fractionAllureTenable, // soutenable / cible, dans [0, 1]
       deficitGlucidesGMin: reel.deficitGlucidesGMin, // glucides demandés mais introuvables
       fractionGlucides: reel.fractionGlucides,
-      depenseCumuleeKcal: reel.depenseCumuleeKcal, // cumul à l'allure cible
-      depenseRealiseeCumuleeKcal: reel.depenseRealiseeCumuleeKcal, // cumul réellement produit
+      depenseCumuleeKcal: reel.depenseCumuleeKcal, // cumul du coût à l'allure cible
+      energieSoutenableCumuleeKcal: reel.energieSoutenableCumuleeKcal, // cumul de ce qui est fournissable
     },
 
     glucides: {
@@ -1046,8 +1086,14 @@ export function simuler(entrees) {
     diagnostics,
 
     synthese: {
-      depenseTotaleKcal: arrondi(reel.depenseCumuleeKcal[dernier], 0), // à l'allure cible
-      depenseRealiseeKcal: arrondi(reel.depenseRealiseeCumuleeKcal[dernier], 0),
+      // Ce que la course COÛTE — le chiffre affiché comme « ta dépense ».
+      depenseTotaleKcal: arrondi(reel.depenseCumuleeKcal[dernier], 0),
+      // Ce que le coureur PEUT fournir à l'allure visée. À NE JAMAIS
+      // présenter comme « ta dépense » : c'est un plafond, pas un bilan.
+      energieSoutenableKcal: arrondi(reel.energieSoutenableCumuleeKcal[dernier], 0),
+      // Estimation grossière, à présenter en fourchette par l'interface.
+      tempsEstimeMin: arrondi(tempsEstimeMin, 0),
+      minutesPerduesEstimees: arrondi(minutesPerduesEstimees, 0),
       allureIntenable:
         reel.premiereAllureIntenableMin === null
           ? null
@@ -1055,6 +1101,8 @@ export function simuler(entrees) {
               minute: reel.premiereAllureIntenableMin,
               km: kmA(reel, reel.premiereAllureIntenableMin),
               fractionMinTenable: arrondi(reel.minFractionAllureTenable, 2),
+              minutesPerduesEstimees: arrondi(minutesPerduesEstimees, 0),
+              tempsEstimeMin: arrondi(tempsEstimeMin, 0),
             },
       glucidesIngeresG: arrondi(reel.ingereCumuleG[dernier], 0),
       glucidesAbsorbesG: arrondi(reel.absorptionCumuleeG[dernier], 0),

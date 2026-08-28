@@ -1,0 +1,147 @@
+<!DOCTYPE html>
+<html lang="fr">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Sources et méthode — Nutrition &amp; Endurance</title>
+    <link rel="stylesheet" href="assets/css/style.css" />
+  </head>
+  <body>
+    <main>
+      <h1>Sources et méthode</h1>
+      <p>
+        Le simulateur repose sur des modèles simplifiés issus de la littérature
+        scientifique. Cette page distingue trois choses : les
+        <strong>références vérifiées</strong>, les
+        <strong>hypothèses de modélisation</strong> (choix assumés, faute de
+        donnée directe), et les <strong>limites connues</strong> du modèle.
+      </p>
+
+      <h2>Références vérifiées</h2>
+      <ul>
+        <li>
+          <strong>Rapoport B.I. (2010)</strong>, <em>Metabolic Factors Limiting
+          Performance in Marathon Runners</em>, PLOS Computational Biology
+          6(10) : e1000960. Modèle des réserves de glycogène, coût brut de
+          ~1&nbsp;kcal/kg/km, courbe de crossover.
+          <a href="https://journals.plos.org/ploscompbiol/article?id=10.1371/journal.pcbi.1000960">lien</a>
+        </li>
+        <li>
+          <strong>Minetti A.E. et coll. (2002)</strong>, <em>Energy cost of
+          walking and running at extreme uphill and downhill slopes</em>, Journal
+          of Applied Physiology 93(3). Polynôme du coût énergétique selon la
+          pente.
+        </li>
+        <li>
+          <strong>Romijn J.A. et coll. (1993)</strong>, <em>Regulation of
+          endogenous fat and carbohydrate metabolism in relation to exercise
+          intensity and duration</em>, American Journal of Physiology. Points
+          d'ancrage de la courbe glucides/lipides (25&nbsp;%&nbsp;→&nbsp;5&nbsp;%,
+          65&nbsp;%&nbsp;→&nbsp;50&nbsp;%, 85&nbsp;%&nbsp;→&nbsp;90&nbsp;%).
+        </li>
+        <li>
+          <strong>Gatorade Sports Science Institute</strong>, <em>Dietary
+          Carbohydrate and the Endurance Athlete: Contemporary
+          Perspectives</em>. Apports de 30 à 90&nbsp;g/h et au-delà, ratios
+          glucose-fructose, protocoles de recharge (8–12&nbsp;g/kg/j).
+          <a href="https://www.gssiweb.org/sports-science-exchange/article/dietary-carbohydrate-and-the-endurance-athlete-contemporary-perspectives">lien</a>
+        </li>
+        <li>
+          <strong>Sports Dietitians Australia &amp; Ultra Sports Science
+          Foundation (2025)</strong>, position statement sur les troubles
+          digestifs à l'effort, Sports Medicine. Hypoperfusion splanchnique,
+          contraintes mécaniques, entraînement intestinal, seuil d'osmolalité.
+          <a href="https://link.springer.com/article/10.1007/s40279-025-02186-6">lien</a>
+        </li>
+      </ul>
+
+      <h2>Hypothèses de modélisation</h2>
+      <p>
+        Ces valeurs n'ont pas de source directe unique. Elles sont marquées
+        <code>// HYPOTHÈSE DE MODÉLISATION</code> dans le code, chacune avec sa
+        fourchette de plausibilité.
+      </p>
+      <ul>
+        <li>
+          <strong>Normalisation de Minetti sur le coût brut.</strong> Le polynôme
+          de Minetti donne un coût <em>net</em> ; on le renormalise sur le coût
+          <em>brut</em> à plat de Rapoport (~1&nbsp;kcal/kg/km), en supposant le
+          rapport net/brut constant avec la pente. Fourchette du brut :
+          0,85–1,10&nbsp;kcal/kg/km.
+        </li>
+        <li>
+          <strong>Forme quadratique de la courbe glucides/lipides.</strong>
+          Exacte aux trois points de Romijn, interpolée entre eux.
+        </li>
+        <li>
+          <strong>Densité de glycogène musculaire « régulier »</strong> à
+          140&nbsp;mmol/kg (entre 110 non entraîné et 150 entraîné) ; effet de la
+          recharge partielle (×1,15) et de l'état hépatique intermédiaire
+          (385&nbsp;mmol/kg).
+        </li>
+        <li>
+          <strong>Vidange gastrique.</strong> Tout ce bloc est incertain :
+          constante de vidange (t½&nbsp;≈&nbsp;20&nbsp;min), forme des
+          ralentissements par l'osmolarité, l'intensité et la déshydratation,
+          plancher du facteur. À prendre comme des ordres de grandeur ajustables,
+          pas comme les plafonds d'absorption (eux bien établis).
+        </li>
+        <li>
+          <strong>Répartition sang / muscle de l'oxydation glucidique.</strong>
+          Fraction venant du sang de 0,25 au départ à 0,45 après 3&nbsp;h
+          (rampe linéaire).
+        </li>
+        <li>
+          <strong>Débit hépatique maximal de glucose</strong> à
+          1,1&nbsp;g/min — plafond haut ; la production hépatique réelle à
+          l'effort prolongé est plutôt de 0,4 à 1,5&nbsp;g/min selon
+          l'intensité.
+        </li>
+        <li>
+          <strong>Dérive de l'économie de course</strong> : +5&nbsp;% de coût
+          atteints après 3&nbsp;h (fourchette +2 à +6&nbsp;%).
+        </li>
+        <li>
+          <strong>Effet de l'entraînement intestinal</strong> sur les plafonds :
+          la voie SGLT1 reste bornée à ~66&nbsp;g/h quel que soit l'entraînement,
+          seule la voie GLUT5 progresse (jusqu'à ~40&nbsp;g/h).
+        </li>
+      </ul>
+
+      <h2>Limites connues</h2>
+      <ul>
+        <li>
+          <strong>Le modèle est pessimiste après le point de rupture.</strong>
+          Quand le coureur ralentit faute de glucides, son intensité relative
+          baisse, donc la part des lipides augmente et le déficit glucidique se
+          réduit de lui-même. Cette boucle de rattrapage n'est pas modélisée : la
+          part lipidique reste calculée à l'allure visée. Le simulateur décrit
+          donc bien <em>le moment</em> où l'allure lâche, mais surestime ce qui
+          se passe <em>ensuite</em>. L'estimation des « minutes perdues » est un
+          ordre de grandeur, à lire comme une fourchette large.
+        </li>
+        <li>
+          <strong>L'allure est fixe.</strong> Le simulateur calcule à l'allure
+          visée du début à la fin ; il n'ajuste pas la vitesse ni la distance
+          parcourue quand le coureur ralentit.
+        </li>
+        <li>
+          <strong>Le sexe n'agit que sur la masse musculaire.</strong> La
+          fraction de muscle squelettique féminine (0,36) est une hypothèse ; une
+          vraie estimation de masse maigre viendra plus tard.
+        </li>
+        <li>
+          <strong>Phase 1 : plat uniquement.</strong> Le dénivelé, le portage et
+          la fatigue gustative ne sont pas encore actifs.
+        </li>
+      </ul>
+
+      <footer class="avertissement">
+        <p>
+          Outil pédagogique. Les modèles présentés ne remplacent pas un avis
+          médical ni l'accompagnement d'un diététicien du sport.
+        </p>
+      </footer>
+    </main>
+  </body>
+</html>

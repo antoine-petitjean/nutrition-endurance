@@ -343,37 +343,57 @@ function planRegulier({ debutMin, pasMin, glucidesG, type, eauMl }) {
     `${oxydesG.toFixed(1)} vs ${(glycogenePuiseG + exogeneUtiliseG).toFixed(1)}`,
   );
 
-  // Énergie : dépense RÉALISÉE = part lipidique (allure cible) + glucides oxydés.
+  // Énergie : énergie SOUTENABLE = part lipidique (allure cible) + glucides oxydés.
   const partLipidiqueKcal = somme(
     r.energie.puissanceKcalMin.map((p, i) => (1 - r.energie.fractionGlucides[i]) * p),
   );
-  const realiseeKcal = somme(r.energie.puissanceRealisableKcalMin);
+  const soutenableKcal = somme(r.energie.puissanceSoutenableKcalMin);
   verifie(
-    'conservation énergie — dépense réalisée = lipides + glucides oxydés',
-    proche(realiseeKcal, partLipidiqueKcal + oxydesG * 4, 1),
-    `${realiseeKcal.toFixed(0)} vs ${(partLipidiqueKcal + oxydesG * 4).toFixed(0)}`,
+    'conservation énergie — énergie soutenable = lipides + glucides oxydés',
+    proche(soutenableKcal, partLipidiqueKcal + oxydesG * 4, 1),
+    `${soutenableKcal.toFixed(0)} vs ${(partLipidiqueKcal + oxydesG * 4).toFixed(0)}`,
   );
 
-  // Le déficit est réel : sans apport, la dépense réalisée < dépense cible.
+  // Le déficit est réel : sans apport, l'énergie soutenable < ce que la course coûte.
   verifie(
-    'sans apport — dépense réalisée nettement sous la cible',
-    r.synthese.depenseRealiseeKcal < r.synthese.depenseTotaleKcal - 50,
-    `réalisée ${r.synthese.depenseRealiseeKcal} / cible ${r.synthese.depenseTotaleKcal}`,
+    'sans apport — énergie soutenable nettement sous le coût de la course',
+    r.synthese.energieSoutenableKcal < r.synthese.depenseTotaleKcal - 50,
+    `soutenable ${r.synthese.energieSoutenableKcal} / coût ${r.synthese.depenseTotaleKcal}`,
   );
   verifie(
     'sans apport — diagnostic ALLURE_INTENABLE émis',
     r.diagnostics.some((diag) => diag.code === 'ALLURE_INTENABLE'),
   );
+
+  // Minutes perdues : estimation positive et plausible, temps estimé > prévu.
+  verifie(
+    'sans apport — minutes perdues estimées entre 5 et 90',
+    r.synthese.minutesPerduesEstimees >= 5 && r.synthese.minutesPerduesEstimees <= 90,
+    `${r.synthese.minutesPerduesEstimees} min`,
+  );
+  verifie(
+    'sans apport — temps estimé = durée prévue + minutes perdues',
+    proche(r.synthese.tempsEstimeMin, r.meta.dureeMin + r.synthese.minutesPerduesEstimees, 1),
+    `${r.synthese.tempsEstimeMin} vs ${r.meta.dureeMin} + ${r.synthese.minutesPerduesEstimees}`,
+  );
+  verifie(
+    'sans apport — les minutes perdues figurent dans le diagnostic ALLURE_INTENABLE',
+    r.diagnostics.find((diag) => diag.code === 'ALLURE_INTENABLE').valeurs.minutesPerduesEstimees > 0,
+  );
 }
 
-// --- Ravitaillement suffisant : aucun déficit, réalisée ≈ cible ---
+// --- Ravitaillement suffisant : aucun déficit, énergie soutenable = coût ---
 {
   const plan = planRegulier({ debutMin: 10, pasMin: 15, glucidesG: 22, type: 'glucose-fructose', eauMl: 250 });
   const r = marathon(plan);
   verifie(
-    '90 g/h — dépense réalisée = dépense cible (aucun déficit)',
-    proche(r.synthese.depenseRealiseeKcal, r.synthese.depenseTotaleKcal, 5),
-    `réalisée ${r.synthese.depenseRealiseeKcal} / cible ${r.synthese.depenseTotaleKcal}`,
+    '90 g/h — énergie soutenable = coût de la course (aucun déficit)',
+    proche(r.synthese.energieSoutenableKcal, r.synthese.depenseTotaleKcal, 5),
+    `soutenable ${r.synthese.energieSoutenableKcal} / coût ${r.synthese.depenseTotaleKcal}`,
+  );
+  verifie(
+    '90 g/h — aucune minute perdue, temps estimé = temps prévu',
+    r.synthese.minutesPerduesEstimees === 0 && r.synthese.tempsEstimeMin === r.meta.dureeMin,
   );
   verifie(
     '90 g/h — pas de diagnostic ALLURE_INTENABLE',
