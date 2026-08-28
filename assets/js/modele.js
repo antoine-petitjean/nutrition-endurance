@@ -259,6 +259,44 @@ export function deduireIntensitePctVO2max({ vitesseMMin, niveau, vmaConnueKmh = 
 }
 
 /**
+ * Plafond de soutenabilité : le % de VO₂max qu'un coureur peut TENIR sur toute
+ * la durée de l'effort. Décroît avec la durée (personne ne tient 85 % pendant
+ * quatre heures), décalé vers le haut pour les coureurs entraînés.
+ *
+ * Interpolation linéaire entre les points d'ancrage, plateau au-delà des bornes.
+ * Si l'intensité déduite dépasse ce plafond, l'objectif n'est pas seulement
+ * difficile — il est impossible (voir le diagnostic OBJECTIF_IRREALISTE).
+ *
+ * @param {{ dureeMin: number, niveau: 'debutant'|'regulier'|'confirme'|'elite' }} params
+ * @returns {number} % de VO₂max, borné à [50, 100]
+ */
+export function pctMaxSoutenable({ dureeMin, niveau }) {
+  const ancrages = INTENSITE.SOUTENABILITE_ANCRAGES_PCT;
+  const decalage = INTENSITE.SOUTENABILITE_DECALAGE_NIVEAU_PCT[niveau] ?? 0;
+
+  const [dureeMinBorne, pctMinBorne] = ancrages[0];
+  const [dureeMaxBorne, pctMaxBorne] = ancrages[ancrages.length - 1];
+
+  let base;
+  if (dureeMin <= dureeMinBorne) {
+    base = pctMinBorne;
+  } else if (dureeMin >= dureeMaxBorne) {
+    base = pctMaxBorne;
+  } else {
+    for (let i = 1; i < ancrages.length; i++) {
+      const [t0, p0] = ancrages[i - 1];
+      const [t1, p1] = ancrages[i];
+      if (dureeMin <= t1) {
+        base = p0 + ((dureeMin - t0) / (t1 - t0)) * (p1 - p0);
+        break;
+      }
+    }
+  }
+
+  return borner(base + decalage, 50, 100);
+}
+
+/**
  * Fraction de l'énergie fournie par les GLUCIDES (le reste vient des lipides),
  * en fonction de l'intensité relative.
  *
@@ -566,8 +604,15 @@ export function simulerScenario(entrees, plan) {
     PLAGES.massePorteeKg[0],
     PLAGES.massePorteeKg[1],
   );
+  // Intensité relative : fournie par l'interface (déduite de l'allure), ou
+  // déduite ici en dernier recours pour ne pas propager un NaN.
   const intensitePctVO2max = borner(
-    course.intensitePctVO2max,
+    course.intensitePctVO2max ??
+      deduireIntensitePctVO2max({
+        vitesseMMin: course.vitesseMoyenneMPerMin,
+        niveau: profil.niveau,
+        vmaConnueKmh: profil.vmaConnueKmh ?? null,
+      }),
     PLAGES.intensitePctVO2max[0],
     PLAGES.intensitePctVO2max[1],
   );
@@ -924,6 +969,7 @@ export function simulerScenario(entrees, plan) {
   return {
     dureeMin,
     distanceKmTotale: distanceKm,
+    intensitePctVO2max, // valeur effectivement utilisée (déduite ou fournie)
     masseTotaleKg,
     muscleInitialG,
     foieInitialG,
@@ -1028,11 +1074,13 @@ export function analyserCompartiment({ fractions, minutes, distanceKm }) {
  *     recharge: 'non'|'partielle'|'complete',
  *     entrainementIntestinal: 'jamais'|'occasionnel'|'regulier',
  *     sueurSalee?: 'faible'|'moyen'|'eleve',
+ *     vmaConnueKmh?: number|null,
  *     petitDejeuner: boolean
  *   },
  *   course: {
  *     distanceKm: number, vitesseMoyenneMPerMin: number,
- *     intensitePctVO2max: number, temperatureC?: number|null
+ *     intensitePctVO2max?: number, temperatureC?: number|null
+ *     // intensitePctVO2max omis → déduit de l'allure + niveau (+ VMA connue)
  *   },
  *   massePorteeKg?: number, terrain?: string, penteMoyenneTangente?: number,
  *   plan?: Array<{ instantMin: number, glucidesG: number,
@@ -1086,6 +1134,33 @@ export function simuler(entrees) {
       : 0;
   const tempsEstimeMin = reel.dureeMin + minutesPerduesEstimees;
 
+  /* --- Objectif irréaliste --------------------------------------------------
+   * Avant même de parler de nutrition : l'allure visée demande-t-elle une
+   * intensité qu'on ne tient PAS sur cette durée ? Si l'intensité (déduite)
+   * dépasse le plafond de soutenabilité, on estime le temps réaliste : la
+   * durée à partir de laquelle l'intensité déduite retombe sous le plafond
+   * (le coureur ralentit → intensité relative plus basse).
+   */
+  const niveau = entrees.profil.niveau;
+  const vmaConnueKmh = entrees.profil.vmaConnueKmh ?? null;
+  const plafondSoutenablePct = pctMaxSoutenable({ dureeMin: reel.dureeMin, niveau });
+  let objectifIrrealiste = null;
+  if (reel.dureeMin > 0 && reel.intensitePctVO2max > plafondSoutenablePct) {
+    let t = reel.dureeMin;
+    const tMax = reel.dureeMin * 3;
+    while (t < tMax) {
+      t += 1;
+      const vMMin = (reel.distanceKmTotale * 1000) / t;
+      const iDeduite = deduireIntensitePctVO2max({ vitesseMMin: vMMin, niveau, vmaConnueKmh });
+      if (iDeduite <= pctMaxSoutenable({ dureeMin: t, niveau })) break;
+    }
+    objectifIrrealiste = {
+      intensiteDemandee: arrondi(reel.intensitePctVO2max, 1),
+      plafondSoutenable: arrondi(plafondSoutenablePct, 1),
+      tempsRealisteMin: t,
+    };
+  }
+
   /* --- Diagnostics (codes structurés, triés du plus grave au moins grave) --- */
   const diagnostics = [];
   if (reel.premiereHyperthermieMin !== null) {
@@ -1097,6 +1172,10 @@ export function simuler(entrees) {
       minute: reel.premiereHyperthermieMin,
       km: kmA(reel, reel.premiereHyperthermieMin),
     });
+  }
+  if (objectifIrrealiste !== null) {
+    // L'objectif ne tient pas — à dire AVANT de parler de ravitaillement.
+    diagnostics.push({ code: 'OBJECTIF_IRREALISTE', gravite: 'critique', ...objectifIrrealiste });
   }
   if (reel.premiereHypoglycemieMin !== null) {
     diagnostics.push({
@@ -1235,6 +1314,10 @@ export function simuler(entrees) {
     diagnostics,
 
     synthese: {
+      // Intensité relative effectivement utilisée (déduite de l'allure).
+      intensitePctVO2max: arrondi(reel.intensitePctVO2max, 1),
+      plafondSoutenablePct: arrondi(plafondSoutenablePct, 1),
+      objectifIrrealiste, // { intensiteDemandee, plafondSoutenable, tempsRealisteMin } | null
       // Ce que la course COÛTE — le chiffre affiché comme « ta dépense ».
       depenseTotaleKcal: arrondi(reel.depenseCumuleeKcal[dernier], 0),
       // Ce que le coureur PEUT fournir à l'allure visée. À NE JAMAIS

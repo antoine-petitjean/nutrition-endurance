@@ -17,6 +17,8 @@
 import {
   coutEnergetiqueMinetti,
   puissanceMetabolique,
+  deduireIntensitePctVO2max,
+  pctMaxSoutenable,
   fractionGlucides,
   osmolariteApport,
   reservesInitiales,
@@ -24,6 +26,7 @@ import {
   facteurVidangeGastrique,
   betaSang,
   simuler,
+  vitesseMPerMinDepuisTemps,
 } from '../assets/js/modele.js';
 import {
   surfaceCorporelleM2,
@@ -108,6 +111,113 @@ verifie(
     return bas >= 0 && bas <= 1 && haut >= 0 && haut <= 1;
   })(),
 );
+
+/* -------------------------------------------------------------------------- */
+/* Étape 4bis — déduction de l'intensité (% VO₂max) depuis l'allure           */
+/* -------------------------------------------------------------------------- */
+
+const MARATHON_KM = 42.195;
+const SEMI_KM = 21.0975;
+
+// Table de contrôle : chaque cas est CALCULÉ, jamais recopié. C'est ce test
+// qui aurait attrapé l'erreur « VMA 15 dans la constante, tableau à VMA 16 ».
+for (const c of [
+  { nom: 'marathon 3h30 régulier', km: MARATHON_KM, min: 210, niveau: 'regulier', attendu: 77 },
+  { nom: 'marathon 5h00 débutant', km: MARATHON_KM, min: 300, niveau: 'debutant', attendu: 68 },
+  { nom: 'marathon 2h50 confirmé', km: MARATHON_KM, min: 170, niveau: 'confirme', attendu: 84 },
+  { nom: 'marathon 2h20 élite', km: MARATHON_KM, min: 140, niveau: 'elite', attendu: 89 },
+  { nom: 'semi 1h30 confirmé', km: SEMI_KM, min: 90, niveau: 'confirme', attendu: 79 },
+]) {
+  const v = vitesseMPerMinDepuisTemps(c.km, c.min);
+  const pct = deduireIntensitePctVO2max({ vitesseMMin: v, niveau: c.niveau });
+  verifie(
+    `intensité déduite — ${c.nom} ≈ ${c.attendu} %`,
+    Math.abs(pct - c.attendu) < 0.6,
+    `${pct.toFixed(1)} %`,
+  );
+}
+
+// VMA connue prioritaire sur le niveau.
+{
+  const v = vitesseMPerMinDepuisTemps(MARATHON_KM, 210);
+  const sansVma = deduireIntensitePctVO2max({ vitesseMMin: v, niveau: 'regulier' });
+  const avecVma = deduireIntensitePctVO2max({ vitesseMMin: v, niveau: 'regulier', vmaConnueKmh: 18 });
+  verifie('VMA connue plus élevée → intensité plus basse', avecVma < sansVma);
+}
+
+// Bornée à 95 %, et croissante avec la vitesse.
+{
+  // Allure au-dessus de la VMA (300 m/min = 18 km/h vs VMA régulier 16) :
+  // le rapport dépasse 100 %, on borne.
+  verifie(
+    'intensité déduite bornée à 95 %',
+    deduireIntensitePctVO2max({ vitesseMMin: 300, niveau: 'regulier' }) === 95,
+  );
+  verifie(
+    'intensité déduite croît avec la vitesse',
+    deduireIntensitePctVO2max({ vitesseMMin: 220, niveau: 'regulier' }) >
+      deduireIntensitePctVO2max({ vitesseMMin: 180, niveau: 'regulier' }),
+  );
+}
+
+/* -------------------------------------------------------------------------- */
+/* Étape 4bis — plafond de soutenabilité et OBJECTIF_IRREALISTE               */
+/* -------------------------------------------------------------------------- */
+
+// Les six cas de calibrage : l'intensité déduite dépasse-t-elle le plafond ?
+for (const c of [
+  { nom: 'marathon 3h30 régulier', min: 210, niveau: 'regulier', irrealiste: false },
+  { nom: 'marathon 2h50 confirmé', min: 170, niveau: 'confirme', irrealiste: false },
+  { nom: 'marathon 2h20 élite', min: 140, niveau: 'elite', irrealiste: false },
+  { nom: 'marathon 5h00 débutant', min: 300, niveau: 'debutant', irrealiste: false },
+  { nom: 'Léa 4h45 débutante', min: 285, niveau: 'debutant', irrealiste: false },
+  { nom: 'Léa 4h00 débutante', min: 240, niveau: 'debutant', irrealiste: true },
+]) {
+  const v = vitesseMPerMinDepuisTemps(MARATHON_KM, c.min);
+  const intensite = deduireIntensitePctVO2max({ vitesseMMin: v, niveau: c.niveau });
+  const plafond = pctMaxSoutenable({ dureeMin: c.min, niveau: c.niveau });
+  verifie(
+    `soutenabilité — ${c.nom} : objectif ${c.irrealiste ? 'IRRÉALISTE' : 'tenable'}`,
+    intensite > plafond === c.irrealiste,
+    `intensité ${intensite.toFixed(1)} vs plafond ${plafond.toFixed(1)}`,
+  );
+}
+
+// Le plafond décroît avec la durée et monte avec le niveau.
+verifie(
+  'plafond de soutenabilité décroît avec la durée',
+  pctMaxSoutenable({ dureeMin: 60, niveau: 'regulier' }) >
+    pctMaxSoutenable({ dureeMin: 240, niveau: 'regulier' }),
+);
+verifie(
+  'plafond de soutenabilité monte avec le niveau',
+  pctMaxSoutenable({ dureeMin: 210, niveau: 'elite' }) >
+    pctMaxSoutenable({ dureeMin: 210, niveau: 'debutant' }),
+);
+
+// Léa 4 h 00 : diagnostic OBJECTIF_IRREALISTE + temps réaliste vers 4 h 30–4 h 45.
+{
+  const lea4h = simuler({
+    profil: { sexe: 'F', masseKg: 60, tailleCm: 165, niveau: 'debutant', recharge: 'non', entrainementIntestinal: 'jamais', sueurSalee: 'moyen', petitDejeuner: true },
+    course: { distanceKm: MARATHON_KM, vitesseMoyenneMPerMin: vitesseMPerMinDepuisTemps(MARATHON_KM, 240) },
+    plan: [],
+  });
+  const diag = lea4h.diagnostics.find((d) => d.code === 'OBJECTIF_IRREALISTE');
+  verifie('Léa 4h00 — diagnostic OBJECTIF_IRREALISTE émis', diag !== undefined);
+  verifie(
+    'Léa 4h00 — OBJECTIF_IRREALISTE en tête des diagnostics',
+    lea4h.diagnostics[0].code === 'OBJECTIF_IRREALISTE',
+  );
+  verifie(
+    'Léa 4h00 — temps réaliste estimé entre 4 h 25 et 4 h 50',
+    diag && diag.tempsRealisteMin >= 265 && diag.tempsRealisteMin <= 290,
+    `${diag && diag.tempsRealisteMin} min`,
+  );
+  verifie(
+    'Léa 4h00 — intensité demandée > plafond dans le diagnostic',
+    diag && diag.intensiteDemandee > diag.plafondSoutenable,
+  );
+}
 
 /* -------------------------------------------------------------------------- */
 /* Étape 4 — osmolarité d'une prise                                          */
@@ -418,6 +528,69 @@ function planRegulier({ debutMin, pasMin, glucidesG, type, eauMl }) {
   });
   verifie('vitesse nulle → 0 minute simulée, pas de crash',
     r.meta.dureeMin === 0 && r.temps.minutes.length === 1 && r.diagnostics.length === 0);
+}
+
+/* -------------------------------------------------------------------------- */
+/* Scénarios de référence — intensité DÉDUITE (plus saisie)                   */
+/* -------------------------------------------------------------------------- */
+// Rejoués après le passage à l'intensité déduite. Kilomètres attendus à ±2 km
+// des valeurs de référence (retour-etape4.md). Si l'un bouge de plus de 2 km,
+// ne pas rattraper en ajustant une constante physiologique.
+{
+  const profilRef = {
+    sexe: 'H', masseKg: 70, tailleCm: 175, niveau: 'regulier',
+    recharge: 'non', entrainementIntestinal: 'occasionnel', sueurSalee: 'moyen', petitDejeuner: true,
+  };
+  const courseRef = { distanceKm: MARATHON_KM, vitesseMoyenneMPerMin: vitesseMPerMinDepuisTemps(MARATHON_KM, 210) };
+  // pas de champ intensitePctVO2max → le moteur la déduit (≈ 77 % ici)
+  const premiereDefaillanceKm = (r) => {
+    const d = [r.synthese.hypoglycemie, r.synthese.murMusculaire, r.synthese.allureIntenable]
+      .filter(Boolean)
+      .sort((a, b) => a.minute - b.minute)[0];
+    return d ? d.km : null;
+  };
+
+  // Réf 1 — marathon 70 kg régulier, sans apport → défaillance ~km 20
+  {
+    const r = simuler({ profil: profilRef, course: courseRef, plan: [] });
+    const km = premiereDefaillanceKm(r);
+    verifie('réf. déduite 1 — mur avant l\'arrivée, ~km 20', km !== null && Math.abs(km - 20) <= 2, `km ${km}`);
+  }
+  // Réf 2 — + 60 g/h → termine avec une réserve, pas d'hypoglycémie
+  {
+    const plan = planRegulier({ debutMin: 12, pasMin: 12, glucidesG: 12, type: 'glucose-fructose', eauMl: 200 });
+    const r = simuler({ profil: profilRef, course: courseRef, plan });
+    verifie('réf. déduite 2 — 60 g/h : pas d\'hypoglycémie, foie tient',
+      !r.diagnostics.some((d) => d.code === 'HYPOGLYCEMIE') && r.synthese.foieResiduelFraction > 0.1,
+      `foie ${(r.synthese.foieResiduelFraction * 100).toFixed(0)} %`);
+  }
+  // Réf 3 — + 150 g/h → absorption plafonnée, surplus digestif
+  {
+    const plan = planRegulier({ debutMin: 10, pasMin: 20, glucidesG: 50, type: 'glucose-fructose', eauMl: 800 });
+    const r = simuler({ profil: profilRef, course: courseRef, plan });
+    const absMaxGParH = Math.max(...r.glucides.absorptionGMin) * 60;
+    verifie('réf. déduite 3 — 150 g/h : absorption ~90 g/h + SURPLUS_DIGESTIF',
+      absMaxGParH >= 80 && absMaxGParH <= 95 && r.diagnostics.some((d) => d.code === 'SURPLUS_DIGESTIF'),
+      `absMax ${absMaxGParH.toFixed(0)} g/h`);
+  }
+  // Réf 4 — Léa F 60 kg débutante, marathon 4 h 45, sans apport
+  //   → mur MUSCULAIRE ~km 33, hypoglycémie ~km 25 (deux défaillances distinctes)
+  {
+    const r = simuler({
+      profil: { sexe: 'F', masseKg: 60, tailleCm: 165, niveau: 'debutant', recharge: 'non', entrainementIntestinal: 'jamais', sueurSalee: 'moyen', petitDejeuner: true },
+      course: { distanceKm: MARATHON_KM, vitesseMoyenneMPerMin: vitesseMPerMinDepuisTemps(MARATHON_KM, 285) },
+      plan: [],
+    });
+    verifie('réf. déduite 4 — Léa 4h45 : mur musculaire ~km 33',
+      r.synthese.murMusculaire && Math.abs(r.synthese.murMusculaire.km - 33) <= 2,
+      `km ${r.synthese.murMusculaire && r.synthese.murMusculaire.km}`);
+    verifie('réf. déduite 4 — Léa 4h45 : hypoglycémie ~km 25, distincte du mur',
+      r.synthese.hypoglycemie && Math.abs(r.synthese.hypoglycemie.km - 25) <= 2 &&
+        r.synthese.hypoglycemie.km < r.synthese.murMusculaire.km,
+      `hypo km ${r.synthese.hypoglycemie && r.synthese.hypoglycemie.km}`);
+    verifie('réf. déduite 4 — Léa 4h45 : objectif tenable (pas d\'OBJECTIF_IRREALISTE)',
+      !r.diagnostics.some((d) => d.code === 'OBJECTIF_IRREALISTE'));
+  }
 }
 
 /* -------------------------------------------------------------------------- */

@@ -289,6 +289,28 @@ passe.** La sudation doit **continuer de croître au-delà de 33 °C**.
   avertissement fixe sur le coup de chaleur**, indépendant des chiffres. Un
   nombre rassurant ne tient pas lieu d'avertissement. (Code + `sources.html`.)
 
+#### g. Intensité déduite, plafond de soutenabilité, objectif irréaliste
+
+L'utilisateur ne saisit plus le % de VO₂max. `deduireIntensitePctVO2max()` le
+calcule par le **rapport de deux applications de l'équation ACSM** (`VO2 =
+3,5 + 0,2·v`, v en m/min) — à l'allure visée et à la VMA. La forme rapport fait
+que le biais connu de l'équation (surestimation de ~15 % chez les athlètes)
+se simplifie en grande partie. VMA : renseignée par le coureur, ou par défaut
+selon le niveau (`INTENSITE.VMA_DEFAUT_PAR_NIVEAU_KMH`, hypothèse). Résultat
+borné à [50, 95].
+
+`pctMaxSoutenable({ dureeMin, niveau })` donne la fraction de VO₂max **tenable
+sur toute la durée** (courbe décroissante, décalée par le niveau). Si l'intensité
+déduite dépasse ce plafond, diagnostic **`OBJECTIF_IRREALISTE`** (gravité
+critique, en tête) avec l'intensité demandée, le plafond, et un **temps réaliste
+estimé** (durée à partir de laquelle l'intensité déduite repasse sous le
+plafond). L'outil dit qu'un objectif ne tient pas **avant** de parler de
+nutrition — aucun calculateur de gels ne fait ça.
+
+Constantes de soutenabilité : `// HYPOTHÈSE DE MODÉLISATION`, fourchette
+±5 points, calibrées pour que les six cas de contrôle de `retour-etape4.md`
+passent.
+
 ### 3.3 et 3.4 — L'interface : quatre blocs
 
 La page suit l'ordre du site : **comprendre ce que la course coûte, PUIS comment
@@ -460,7 +482,13 @@ Aucun prérequis scientifique, mais on ne prend jamais le lecteur pour un idiot.
 
 Quatre personas de référence :
 - **Léa, 32 ans**, premier marathon sur route — a « tapé dans le mur » au 32ᵉ km
-  sans comprendre pourquoi.
+  sans comprendre pourquoi. Scénario de référence du moteur : F, 60 kg,
+  débutante, marathon en **4 h 45** sans apport → **mur musculaire** vers le
+  km 33, hypoglycémie vers le km 25. Le « jambes vides au 32ᵉ » qu'elle raconte
+  est le **mur musculaire**, pas l'hypoglycémie : deux défaillances distinctes,
+  que le site nomme séparément. (Viser 4 h en débutante déclencherait
+  `OBJECTIF_IRREALISTE` — l'allure n'est pas tenable, indépendamment de la
+  nutrition.)
 - **Marc, 45 ans**, ultra-traileur — vomit systématiquement après 8 h d'effort et
   ne supporte plus le sucré.
 - **Yanis, 29 ans**, routard qui passe au trail — applique sa stratégie marathon

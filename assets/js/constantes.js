@@ -159,6 +159,34 @@ export const INTENSITE = Object.freeze({
     confirme: 18,
     elite: 20.5,
   }),
+
+  // Plafond de soutenabilité : fraction de VO₂max qu'on peut tenir selon la
+  // DURÉE de l'effort. Décroît avec la durée. Points d'ancrage [minutes, %],
+  // base « regulier », interpolation linéaire, plateau au-delà des bornes.
+  // Si l'intensité déduite dépasse ce plafond → diagnostic OBJECTIF_IRREALISTE.
+  // // HYPOTHÈSE DE MODÉLISATION — physiologie de l'endurance, pas de source
+  //   unique ; fourchette ±5 points. (Ancrages 240/300/360 relevés de +4/+4/+2
+  //   par rapport au premier jet, pour le calibrage des six cas de contrôle.)
+  SOUTENABILITE_ANCRAGES_PCT: Object.freeze([
+    [30, 92],
+    [60, 88],
+    [120, 85],
+    [180, 81],
+    [240, 80],
+    [300, 76],
+    [360, 71],
+    [600, 63],
+  ]),
+
+  // Décalage du plafond selon le niveau : un coureur entraîné tient une
+  // fraction plus élevée de sa VO₂max à durée égale.
+  // // HYPOTHÈSE DE MODÉLISATION
+  SOUTENABILITE_DECALAGE_NIVEAU_PCT: Object.freeze({
+    debutant: -5,
+    regulier: 0,
+    confirme: 4,
+    elite: 7,
+  }),
 });
 
 /* -------------------------------------------------------------------------- */
