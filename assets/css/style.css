@@ -1,0 +1,186 @@
+/**
+ * style.css — feuille de style STARTER (phase 1).
+ * Volontairement minimale : lisibilité, chiffres tabulaires, thème clair/sombre,
+ * mobile-first. Le vrai design system (variables complètes, graphiques) viendra
+ * avec les pages éditoriales.
+ */
+
+:root {
+  --fond: #ffffff;
+  --fond-encart: #f6f8fa;
+  --texte: #1a1a1a;
+  --texte-doux: #57606a;
+  --trait: #d0d7de;
+  --accent: #0969da;
+  --ok: #1a7f37;
+  --alerte: #9a6700;
+  --danger: #cf222e;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --fond: #0d1117;
+    --fond-encart: #161b22;
+    --texte: #e6edf3;
+    --texte-doux: #9198a1;
+    --trait: #30363d;
+    --accent: #4c8dff;
+    --ok: #3fb950;
+    --alerte: #d29922;
+    --danger: #f85149;
+  }
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  padding: 1rem;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica,
+    Arial, sans-serif;
+  font-size: 17px;
+  line-height: 1.6;
+  color: var(--texte);
+  background: var(--fond);
+}
+
+main {
+  max-width: 70ch;
+  margin: 0 auto;
+}
+
+h1 {
+  font-size: 1.5rem;
+  line-height: 1.3;
+}
+
+h2 {
+  font-size: 1.15rem;
+  margin-top: 2rem;
+  border-bottom: 1px solid var(--trait);
+  padding-bottom: 0.25rem;
+}
+
+a {
+  color: var(--accent);
+}
+
+fieldset {
+  border: 1px solid var(--trait);
+  border-radius: 6px;
+  margin: 0 0 1rem;
+  padding: 0.75rem 1rem 1rem;
+}
+
+legend {
+  font-weight: 600;
+  padding: 0 0.4rem;
+}
+
+label {
+  display: block;
+  margin: 0.6rem 0 0.15rem;
+  font-size: 0.95rem;
+  color: var(--texte-doux);
+}
+
+input,
+select {
+  width: 100%;
+  padding: 0.4rem 0.5rem;
+  font-size: 1rem;
+  color: var(--texte);
+  background: var(--fond);
+  border: 1px solid var(--trait);
+  border-radius: 4px;
+}
+
+input[type="checkbox"] {
+  width: auto;
+  margin-right: 0.4rem;
+}
+
+.champs-grille {
+  display: grid;
+  gap: 0 1rem;
+  grid-template-columns: 1fr;
+}
+
+@media (min-width: 620px) {
+  .champs-grille {
+    grid-template-columns: 1fr 1fr;
+  }
+}
+
+.encart {
+  background: var(--fond-encart);
+  border: 1px solid var(--trait);
+  border-radius: 6px;
+  padding: 0.75rem 1rem;
+}
+
+.avertissement {
+  font-size: 0.9rem;
+  color: var(--texte-doux);
+}
+
+.nombres {
+  font-variant-numeric: tabular-nums;
+}
+
+.verdict {
+  font-weight: 600;
+}
+
+.diag-critique {
+  color: var(--danger);
+}
+
+.diag-attention {
+  color: var(--alerte);
+}
+
+.diag-ok {
+  color: var(--ok);
+}
+
+ul.diagnostics {
+  padding-left: 1.2rem;
+}
+
+.tableau-enveloppe {
+  overflow-x: auto;
+}
+
+table {
+  border-collapse: collapse;
+  width: 100%;
+  font-size: 0.85rem;
+  font-variant-numeric: tabular-nums;
+}
+
+th,
+td {
+  border: 1px solid var(--trait);
+  padding: 0.3rem 0.5rem;
+  text-align: right;
+  white-space: nowrap;
+}
+
+th {
+  background: var(--fond-encart);
+  position: sticky;
+  top: 0;
+}
+
+tbody tr:hover {
+  background: var(--fond-encart);
+}
+
+footer {
+  margin-top: 3rem;
+  padding-top: 1rem;
+  border-top: 1px solid var(--trait);
+}
