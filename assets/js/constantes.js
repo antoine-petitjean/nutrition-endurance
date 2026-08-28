@@ -310,9 +310,11 @@ export const VIDANGE_GASTRIQUE = Object.freeze({
 
   // Ralentissement par la déshydratation. HOOK phase 1 : la perte de masse
   // n'est pas modélisée avant la phase 4, donc cette contribution vaut
-  // toujours 1.00 pour l'instant.
+  // toujours 1.00 pour l'instant (perteMassePct = 0 → sous le seuil).
   // [Seuil 3–4 % de perte de masse : CLAUDE.md §3.2d]
+  // // HYPOTHÈSE DE MODÉLISATION sur PLEIN_RALENTISSEMENT (fourchette 4–6 %)
   DESHYDRATATION_SEUIL_PCT: 3,
+  DESHYDRATATION_PLEIN_RALENTISSEMENT_PCT: 5,
   DESHYDRATATION_FACTEUR_MIN: 0.75,
 
   // Plancher du produit des trois modulateurs : la vidange ne s'arrête

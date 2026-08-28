@@ -20,6 +20,9 @@ import {
   osmolariteApport,
   reservesInitiales,
   plafondAbsorptionGParH,
+  facteurVidangeGastrique,
+  betaSang,
+  simuler,
 } from '../assets/js/modele.js';
 
 /* -------------------------------------------------------------------------- */
@@ -190,6 +193,146 @@ verifie(
   const reg = plafondAbsorptionGParH({ type: 'glucose-fructose', entrainementIntestinal: 'regulier' });
   verifie('intestin entraîné → GLUT5 augmente', reg.glut5GParH > occ.glut5GParH);
   verifie('intestin entraîné → plafond combiné plus haut', reg.totalGParH > occ.totalGParH);
+}
+
+/* -------------------------------------------------------------------------- */
+/* Étape 5 — vidange gastrique                                               */
+/* -------------------------------------------------------------------------- */
+
+// Sous tous les seuils (boisson isotonique, effort modéré, pas de
+// déshydratation) : aucun ralentissement.
+verifie(
+  'vidange non ralentie sous les seuils',
+  facteurVidangeGastrique({ osmolariteMOsmKg: 280, pctVO2max: 70, perteMassePct: 0 }) === 1,
+);
+
+// Un gel très hypertonique à haute intensité ralentit nettement, sans jamais
+// descendre sous le plancher.
+{
+  const f = facteurVidangeGastrique({ osmolariteMOsmKg: 900, pctVO2max: 90, perteMassePct: 0 });
+  verifie('gel hypertonique + haute intensité → vidange ralentie', f < 0.6 && f >= 0.3,
+    `facteur ${f.toFixed(3)}`);
+}
+
+// Hook déshydratation : perteMassePct = 0 ne change rien (phase 1).
+verifie(
+  'déshydratation à 0 % → sans effet',
+  facteurVidangeGastrique({ osmolariteMOsmKg: 280, pctVO2max: 70, perteMassePct: 0 }) ===
+    facteurVidangeGastrique({ osmolariteMOsmKg: 280, pctVO2max: 70 }),
+);
+
+/* -------------------------------------------------------------------------- */
+/* Étape 6 — beta (part sanguine de l'oxydation glucidique)                  */
+/* -------------------------------------------------------------------------- */
+
+verifie('beta au départ ≈ 0.25', proche(betaSang(0), 0.25, 1e-9));
+verifie('beta au plateau (180 min) ≈ 0.45', proche(betaSang(180), 0.45, 1e-9));
+verifie('beta après le plateau reste à 0.45', proche(betaSang(600), 0.45, 1e-9));
+verifie('beta croît entre 0 et 180 min', betaSang(90) > betaSang(0) && betaSang(90) < betaSang(180));
+
+/* -------------------------------------------------------------------------- */
+/* Étapes 7 à 9 — simulation complète (marathon 70 kg, 3 h 30)              */
+/* -------------------------------------------------------------------------- */
+
+/** Fabrique une entrée « marathon 70 kg en 3 h 30 » avec un plan donné. */
+function marathon(plan, profilEnPlus = {}) {
+  return simuler({
+    profil: {
+      sexe: 'H',
+      masseKg: 70,
+      niveau: 'regulier',
+      recharge: 'non',
+      entrainementIntestinal: 'occasionnel',
+      petitDejeuner: true,
+      ...profilEnPlus,
+    },
+    course: {
+      distanceKm: 42.195,
+      vitesseMoyenneMPerMin: 42195 / 210,
+      intensitePctVO2max: 75,
+    },
+    massePorteeKg: 0,
+    terrain: 'route',
+    penteMoyenneTangente: 0,
+    plan,
+  });
+}
+
+/** Prises régulières : `glucidesG` toutes les `pasMin` min, de `debutMin` à 210. */
+function planRegulier({ debutMin, pasMin, glucidesG, type, eauMl }) {
+  const plan = [];
+  for (let t = debutMin; t < 210; t += pasMin) {
+    plan.push({ instantMin: t, glucidesG, type, eauMl });
+  }
+  return plan;
+}
+
+// --- Point 1 : sans apport, le FOIE atteint zéro AVANT le muscle ---
+{
+  const r = marathon([]);
+  const foieZero = r.glycogene.epuisementFoie;
+  const muscleZero = r.glycogene.epuisementMuscle;
+  verifie('sans apport — le foie s\'épuise', foieZero !== null,
+    `foie résiduel ${r.synthese.foieResiduelFraction}`);
+  verifie(
+    'sans apport — le foie s\'épuise AVANT le muscle',
+    foieZero !== null && (muscleZero === null || foieZero.minute < muscleZero.minute),
+    `foie ${foieZero && foieZero.minute} min / muscle ${muscleZero && muscleZero.minute} min`,
+  );
+  verifie('sans apport — diagnostic HYPOGLYCEMIE émis',
+    r.diagnostics.some((d) => d.code === 'HYPOGLYCEMIE'));
+}
+
+// --- Point 2 : avec 60 g/h de glucose-fructose, le foie tient jusqu'au bout ---
+{
+  const plan = planRegulier({ debutMin: 12, pasMin: 12, glucidesG: 12, type: 'glucose-fructose', eauMl: 200 });
+  const r = marathon(plan);
+  verifie('60 g/h — le foie ne s\'épuise pas', r.glycogene.epuisementFoie === null,
+    `foie résiduel ${r.synthese.foieResiduelFraction}`);
+  verifie('60 g/h — pas de diagnostic HYPOGLYCEMIE',
+    !r.diagnostics.some((d) => d.code === 'HYPOGLYCEMIE'));
+}
+
+// --- Point 3 : 150 g/h → absorption plafonnée, surplus intestinal massif ---
+// Eau généreuse (800 ml par prise) : on veut isoler le plafond des
+// TRANSPORTEURS, pas le ralentissement de la vidange gastrique. Avec moins
+// d'eau une part du surplus resterait coincée dans l'estomac.
+{
+  const plan = planRegulier({ debutMin: 10, pasMin: 20, glucidesG: 50, type: 'glucose-fructose', eauMl: 800 });
+  const r = marathon(plan);
+  const absMaxGParH = Math.max(...r.glucides.absorptionGMin) * 60;
+  verifie('150 g/h — l\'absorption plafonne autour de 90 g/h',
+    absMaxGParH >= 80 && absMaxGParH <= 95, `max ${absMaxGParH.toFixed(0)} g/h`);
+  verifie('150 g/h — le stock intestinal dépasse 150 g en fin de course',
+    r.synthese.surplusIntestinalFinG > 150, `${r.synthese.surplusIntestinalFinG} g`);
+  verifie('150 g/h — diagnostic SURPLUS_DIGESTIF émis',
+    r.diagnostics.some((d) => d.code === 'SURPLUS_DIGESTIF'));
+  verifie('150 g/h — ingéré nettement supérieur à absorbé',
+    r.synthese.glucidesIngeresG - r.synthese.glucidesAbsorbesG > 150);
+}
+
+// --- Le fantôme est calculé et le plan épargne du glycogène ---
+{
+  const plan = planRegulier({ debutMin: 20, pasMin: 20, glucidesG: 20, type: 'glucose-fructose', eauMl: 300 });
+  const r = marathon(plan);
+  const d = r.temps.minutes.length - 1;
+  verifie('fantôme présent', Array.isArray(r.fantome.muscleFraction) && r.fantome.muscleFraction.length === d + 1);
+  verifie(
+    'le plan épargne du glycogène par rapport au fantôme',
+    r.glycogene.muscleFraction[d] + r.glycogene.foieFraction[d] >
+      r.fantome.muscleFraction[d] + r.fantome.foieFraction[d],
+  );
+}
+
+// --- Cas limite §3.5.8 : vitesse nulle ne casse rien ---
+{
+  const r = simuler({
+    profil: { sexe: 'H', masseKg: 70, niveau: 'regulier', recharge: 'non', entrainementIntestinal: 'occasionnel', petitDejeuner: true },
+    course: { distanceKm: 42.195, vitesseMoyenneMPerMin: 0, intensitePctVO2max: 75 },
+    plan: [],
+  });
+  verifie('vitesse nulle → 0 minute simulée, pas de crash',
+    r.meta.dureeMin === 0 && r.temps.minutes.length === 1 && r.diagnostics.length === 0);
 }
 
 /* -------------------------------------------------------------------------- */
