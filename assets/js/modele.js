@@ -37,10 +37,12 @@ import {
   CONVERSIONS,
   VIDANGE_GASTRIQUE,
   METABOLISME_GLUCIDIQUE,
+  SUDATION,
   SEUILS,
   FACTEUR_TERRAIN,
   PLAGES,
 } from './constantes.js';
+import { surfaceCorporelleM2, tauxSudationLParH, sodiumSueurMgParL } from './sudation.js';
 
 /* ========================================================================== */
 /* ÉTAPE 1 — Utilitaires purs                                                 */
@@ -528,6 +530,9 @@ export function simulerScenario(entrees, plan) {
   const vitesseMPerMin = course.vitesseMoyenneMPerMin;
   const terrain = entrees.terrain ?? 'route';
   const penteMoyenneTangente = entrees.penteMoyenneTangente ?? 0;
+  const tailleCm = borner(profil.tailleCm ?? 175, PLAGES.tailleCm[0], PLAGES.tailleCm[1]);
+  const temperatureC = course.temperatureC ?? 15;
+  const sueurSalee = profil.sueurSalee ?? 'moyen';
 
   /* --- Constantes du scénario (invariantes minute après minute en phase 1) --- */
   const dureeMin =
@@ -537,6 +542,8 @@ export function simulerScenario(entrees, plan) {
   const masseTotaleKg = masseKg + massePorteeKg;
   const coutKcalParKgKm = coutEnergetiqueMinetti(penteMoyenneTangente);
   const facteurTerrain = FACTEUR_TERRAIN[terrain] ?? 1;
+  const surfaceM2 = surfaceCorporelleM2({ tailleCm, masseKg });
+  const sodiumSueurMgL = sodiumSueurMgParL({ sueurSalee });
   const { muscleG: muscleInitialG, foieG: foieInitialG } = reservesInitiales({
     masseKg,
     sexe: profil.sexe,
@@ -578,6 +585,10 @@ export function simulerScenario(entrees, plan) {
   // sur les seules minutes en déficit.
   let nMinutesEnDeficit = 0;
   let sommeFractionTenableEnDeficit = 0;
+  let eauPerdueCumuleeL = 0; // sueur — brut, « eau à perdre »
+  let eauAbsorbeeCumuleeL = 0; // eau bue, vidée de l'estomac (supposée absorbée)
+  let sodiumPerduCumuleeMg = 0;
+  let premiereDeshydratationMin = null; // 1re minute sous −2 % de masse (bilan NET)
 
   /* --- Séries (longueur dureeMin + 1) --- */
   const N = dureeMin + 1;
@@ -601,6 +612,10 @@ export function simulerScenario(entrees, plan) {
   const puissanceSoutenableKcalMin = nouvelleSerie();
   const fractionAllureTenableSerie = nouvelleSerie();
   const energieSoutenableCumuleeKcal = nouvelleSerie();
+  const sudationLParHSerie = nouvelleSerie();
+  const eauPerdueCumuleeLSerie = nouvelleSerie();
+  const sodiumPerduCumuleeMgSerie = nouvelleSerie();
+  const perteMassePctSerie = nouvelleSerie();
   const muscleGSerie = nouvelleSerie();
   const foieGSerie = nouvelleSerie();
   const muscleFraction = nouvelleSerie();
@@ -616,6 +631,7 @@ export function simulerScenario(entrees, plan) {
       deficitG = 0,
       puissanceSoutenable = 0,
       fractionTenable = 1,
+      sudationLParH = 0,
     } = debits ?? {};
     minutes[i] = i;
     distanceKmSerie[i] = Math.min((vitesseMPerMin * i) / 1000, distanceKm) || 0;
@@ -626,6 +642,11 @@ export function simulerScenario(entrees, plan) {
     puissanceSoutenableKcalMin[i] = puissanceSoutenable;
     fractionAllureTenableSerie[i] = fractionTenable;
     energieSoutenableCumuleeKcal[i] = energieSoutenableCumuleeKcalCourant;
+    sudationLParHSerie[i] = sudationLParH;
+    eauPerdueCumuleeLSerie[i] = eauPerdueCumuleeL;
+    sodiumPerduCumuleeMgSerie[i] = sodiumPerduCumuleeMg;
+    perteMassePctSerie[i] =
+      masseKg > 0 ? ((eauPerdueCumuleeL - eauAbsorbeeCumuleeL) / masseKg) * 100 : 0;
     ingereCumuleG[i] = ingereCumuleGCourant;
     estomacGSerie[i] = estomacGlucoseG + estomacFructoseG;
     estomacEauMlSerie[i] = estomacEauMl;
@@ -682,7 +703,28 @@ export function simulerScenario(entrees, plan) {
     });
     const besoinTotalG = (puissance * fCHO) / CONVERSIONS.KCAL_PAR_G_GLYCOGENE;
 
-    /* (3) Vidange gastrique : même fraction pour l'eau et les glucides */
+    /* (2 bis) Sudation : eau et sodium perdus pendant la minute */
+    const sudationLParH = tauxSudationLParH({
+      puissanceKcalMin: puissance,
+      surfaceM2,
+      temperatureC,
+    });
+    eauPerdueCumuleeL += sudationLParH / 60;
+    sodiumPerduCumuleeMg += (sudationLParH / 60) * sodiumSueurMgL;
+    // Bilan NET : sueur perdue − eau bue déjà absorbée. 1 L ≈ 1 kg.
+    // Simplification phase 1 : l'eau vidée de l'estomac est comptée comme
+    // entièrement absorbée dès la minute suivante.
+    const perteMassePct =
+      masseKg > 0 ? ((eauPerdueCumuleeL - eauAbsorbeeCumuleeL) / masseKg) * 100 : 0;
+    if (
+      premiereDeshydratationMin === null &&
+      perteMassePct >= SUDATION.SEUIL_DESHYDRATATION_PCT_MASSE
+    ) {
+      premiereDeshydratationMin = m + 1;
+    }
+
+    /* (3) Vidange gastrique : même fraction pour l'eau et les glucides.
+     * La déshydratation (perteMassePct) la freine — hook enfin branché. */
     const carbsGastriques = estomacGlucoseG + estomacFructoseG;
     const osmolariteContenu =
       carbsGastriques > 0
@@ -691,7 +733,7 @@ export function simulerScenario(entrees, plan) {
     const facteurVidange = facteurVidangeGastrique({
       osmolariteMOsmKg: osmolariteContenu,
       pctVO2max: intensitePctVO2max,
-      perteMassePct: 0, // hook phase 4
+      perteMassePct,
     });
     const fractionVidee = Math.min(
       VIDANGE_GASTRIQUE.K_BASE_PAR_MIN * facteurVidange,
@@ -703,6 +745,7 @@ export function simulerScenario(entrees, plan) {
     estomacGlucoseG -= glucoseVideG;
     estomacFructoseG -= fructoseVideG;
     estomacEauMl -= eauVideMl;
+    eauAbsorbeeCumuleeL += eauVideMl / 1000; // pris en compte au pas suivant
     lumenGlucoseG += glucoseVideG;
     lumenFructoseG += fructoseVideG;
     // L'eau vidée n'est pas suivie dans l'intestin en phase 1 (hydratation = phase 4).
@@ -808,6 +851,7 @@ export function simulerScenario(entrees, plan) {
       deficitG: deficitGlucidesG,
       puissanceSoutenable,
       fractionTenable,
+      sudationLParH,
     });
   }
 
@@ -823,6 +867,12 @@ export function simulerScenario(entrees, plan) {
     minFractionAllureTenable,
     nMinutesEnDeficit,
     sommeFractionTenableEnDeficit,
+    premiereDeshydratationMin,
+    eauPerdueTotaleL: eauPerdueCumuleeL, // sueur brute
+    eauAbsorbeeTotaleL: eauAbsorbeeCumuleeL, // eau bue
+    sodiumPerduTotalMg: sodiumPerduCumuleeMg,
+    perteMasseFinalePct:
+      masseKg > 0 ? ((eauPerdueCumuleeL - eauAbsorbeeCumuleeL) / masseKg) * 100 : 0,
     oxydationCumuleeGlucidesG,
 
     minutes,
@@ -834,6 +884,10 @@ export function simulerScenario(entrees, plan) {
     puissanceSoutenableKcalMin,
     fractionAllureTenable: fractionAllureTenableSerie,
     energieSoutenableCumuleeKcal,
+    sudationLParH: sudationLParHSerie,
+    eauPerdueCumuleeL: eauPerdueCumuleeLSerie,
+    sodiumPerduCumuleeMg: sodiumPerduCumuleeMgSerie,
+    perteMassePct: perteMassePctSerie,
     ingereCumuleG,
     estomacG: estomacGSerie,
     estomacEauMl: estomacEauMlSerie,
@@ -902,10 +956,11 @@ export function analyserCompartiment({ fractions, minutes, distanceKm }) {
  *
  * @param {{
  *   profil: {
- *     sexe: 'H'|'F', masseKg: number,
+ *     sexe: 'H'|'F', masseKg: number, tailleCm?: number,
  *     niveau: 'debutant'|'regulier'|'confirme'|'elite',
  *     recharge: 'non'|'partielle'|'complete',
  *     entrainementIntestinal: 'jamais'|'occasionnel'|'regulier',
+ *     sueurSalee?: 'faible'|'moyen'|'eleve',
  *     petitDejeuner: boolean
  *   },
  *   course: {
@@ -1014,6 +1069,15 @@ export function simuler(entrees) {
       },
     });
   }
+  if (reel.premiereDeshydratationMin !== null) {
+    diagnostics.push({
+      code: 'DESHYDRATATION',
+      gravite: 'attention',
+      minute: reel.premiereDeshydratationMin,
+      km: kmA(reel, reel.premiereDeshydratationMin),
+      valeurs: { perteMasseFinalePct: arrondi(reel.perteMasseFinalePct, 1) },
+    });
+  }
 
   return {
     meta: {
@@ -1051,6 +1115,14 @@ export function simuler(entrees) {
       absorptionCumuleeG: reel.absorptionCumuleeG,
       oxydationGlucidesGMin: reel.oxydationGlucidesGMin,
       excedentAbsorbeCumuleG: reel.excedentAbsorbeCumuleG,
+    },
+
+    hydrique: {
+      sudationLParH: reel.sudationLParH, // débit instantané, L/h
+      eauPerdueCumuleeL: reel.eauPerdueCumuleeL, // sueur brute
+      sodiumPerduCumuleeMg: reel.sodiumPerduCumuleeMg,
+      perteMassePct: reel.perteMassePct, // bilan NET, % de la masse corporelle
+      seuilDeshydratationPct: SUDATION.SEUIL_DESHYDRATATION_PCT_MASSE,
     },
 
     glycogene: {
@@ -1107,6 +1179,14 @@ export function simuler(entrees) {
       glucidesIngeresG: arrondi(reel.ingereCumuleG[dernier], 0),
       glucidesAbsorbesG: arrondi(reel.absorptionCumuleeG[dernier], 0),
       glucidesOxydesG: arrondi(reel.oxydationCumuleeGlucidesG, 0),
+      eauPerdueTotaleL: arrondi(reel.eauPerdueTotaleL, 2), // sueur brute — « eau à perdre »
+      eauAbsorbeeTotaleL: arrondi(reel.eauAbsorbeeTotaleL, 2), // eau bue
+      sodiumPerduTotalMg: arrondi(reel.sodiumPerduTotalMg, 0),
+      perteMasseFinalePct: arrondi(reel.perteMasseFinalePct, 1), // bilan net
+      deshydratation:
+        reel.premiereDeshydratationMin === null
+          ? null
+          : { minute: reel.premiereDeshydratationMin, km: kmA(reel, reel.premiereDeshydratationMin) },
       surplusIntestinalFinG: arrondi(surplusIntestinalFinG, 0),
       surplusDigestifTotalFinG: arrondi(surplusDigestifTotalFinG, 0),
       excedentAbsorbeG: arrondi(reel.excedentAbsorbeCumuleG[dernier], 0),

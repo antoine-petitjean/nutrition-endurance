@@ -16,6 +16,7 @@
 
 import {
   coutEnergetiqueMinetti,
+  puissanceMetabolique,
   fractionGlucides,
   osmolariteApport,
   reservesInitiales,
@@ -24,6 +25,11 @@ import {
   betaSang,
   simuler,
 } from '../assets/js/modele.js';
+import {
+  surfaceCorporelleM2,
+  tauxSudationLParH,
+  sodiumSueurMgParL,
+} from '../assets/js/sudation.js';
 
 /* -------------------------------------------------------------------------- */
 /* Micro-outillage d'assertion                                               */
@@ -410,6 +416,108 @@ function planRegulier({ debutMin, pasMin, glucidesG, type, eauMl }) {
   });
   verifie('vitesse nulle → 0 minute simulée, pas de crash',
     r.meta.dureeMin === 0 && r.temps.minutes.length === 1 && r.diagnostics.length === 0);
+}
+
+/* -------------------------------------------------------------------------- */
+/* Sudation et sodium                                                        */
+/* -------------------------------------------------------------------------- */
+
+// Surface corporelle — contrôle de Du Bois : 175 cm, 70 kg → ≈ 1.85 m².
+verifie(
+  'surface corporelle 175 cm / 70 kg ≈ 1.85 m²',
+  proche(surfaceCorporelleM2({ tailleCm: 175, masseKg: 70 }), 1.85, 0.02),
+  `${surfaceCorporelleM2({ tailleCm: 175, masseKg: 70 }).toFixed(3)}`,
+);
+
+// Cas de contrôle GSSI (70 kg, 175 cm, marathon 3 h 30) : la puissance à
+// l'allure cible sert d'entrée, testée à trois températures.
+{
+  const surfaceM2 = surfaceCorporelleM2({ tailleCm: 175, masseKg: 70 });
+  const puissance = puissanceMetabolique({
+    coutKcalParKgKm: coutEnergetiqueMinetti(0),
+    masseTotaleKg: 70,
+    vitesseMPerMin: 42195 / 210,
+    facteurTerrain: 1,
+    deriveEconomie: 0,
+  });
+  const cas = [
+    { tempC: 15, cible: 0.5, bande: [0.4, 0.65] },
+    { tempC: 25, cible: 0.9, bande: [0.8, 1.15] },
+    { tempC: 32, cible: 1.4, bande: [1.2, 1.6] },
+  ];
+  for (const { tempC, cible, bande } of cas) {
+    const l = tauxSudationLParH({ puissanceKcalMin: puissance, surfaceM2, temperatureC: tempC });
+    verifie(
+      `sudation à ${tempC} °C ≈ ${cible} L/h (contrôle GSSI)`,
+      l >= bande[0] && l <= bande[1],
+      `${l.toFixed(2)} L/h`,
+    );
+    verifie(
+      `sudation à ${tempC} °C dans la fourchette réaliste [0.3, 3.0]`,
+      l >= 0.3 && l <= 3.0,
+    );
+  }
+}
+
+// La sudation croît quand il fait plus chaud.
+{
+  const surfaceM2 = surfaceCorporelleM2({ tailleCm: 175, masseKg: 70 });
+  const P = 14;
+  const chaud = tauxSudationLParH({ puissanceKcalMin: P, surfaceM2, temperatureC: 30 });
+  const frais = tauxSudationLParH({ puissanceKcalMin: P, surfaceM2, temperatureC: 10 });
+  verifie('sudation monotone en température', chaud > frais);
+}
+
+// Sodium de la sueur : 20 / 40 / 70 mmol/L × 22.99.
+verifie(
+  'sodium sueur "moyen" ≈ 920 mg/L',
+  proche(sodiumSueurMgParL({ sueurSalee: 'moyen' }), 40 * 22.99, 0.1),
+);
+verifie(
+  'sueur salée "eleve" > "faible"',
+  sodiumSueurMgParL({ sueurSalee: 'eleve' }) > sodiumSueurMgParL({ sueurSalee: 'faible' }),
+);
+
+// Intégration dans la simulation : bilan hydrique cohérent, déshydratation
+// signalée quand la perte de masse nette dépasse 2 %.
+{
+  const chaud = marathon([], { tailleCm: 175, sueurSalee: 'moyen' });
+  // marathon() ne fixe pas la température → défaut 15 °C dans le moteur.
+  verifie(
+    'course à 15 °C sans boire — eau perdue entre 1 et 3 L',
+    chaud.synthese.eauPerdueTotaleL >= 1 && chaud.synthese.eauPerdueTotaleL <= 3,
+    `${chaud.synthese.eauPerdueTotaleL} L`,
+  );
+  verifie(
+    'course sans boire — diagnostic DESHYDRATATION émis',
+    chaud.diagnostics.some((d) => d.code === 'DESHYDRATATION'),
+  );
+  verifie(
+    'perte de masse finale = dernière valeur de la série',
+    proche(
+      chaud.synthese.perteMasseFinalePct,
+      chaud.hydrique.perteMassePct[chaud.hydrique.perteMassePct.length - 1],
+      0.05,
+    ),
+  );
+}
+
+// Boire réduit la perte de masse nette (l'eau vidée de l'estomac compte).
+{
+  const sansBoire = marathon([], { tailleCm: 175 });
+  const enBuvant = marathon(
+    planRegulier({ debutMin: 10, pasMin: 15, glucidesG: 15, type: 'glucose', eauMl: 400 }),
+    { tailleCm: 175 },
+  );
+  verifie(
+    'boire réduit la perte de masse nette',
+    enBuvant.synthese.perteMasseFinalePct < sansBoire.synthese.perteMasseFinalePct,
+    `${enBuvant.synthese.perteMasseFinalePct}% en buvant / ${sansBoire.synthese.perteMasseFinalePct}% sans`,
+  );
+  verifie(
+    'la sueur brute (eau à perdre) ne dépend pas de la boisson',
+    proche(enBuvant.synthese.eauPerdueTotaleL, sansBoire.synthese.eauPerdueTotaleL, 0.05),
+  );
 }
 
 /* -------------------------------------------------------------------------- */

@@ -394,6 +394,61 @@ export const METABOLISME_GLUCIDIQUE = Object.freeze({
 });
 
 /* -------------------------------------------------------------------------- */
+/* 11 bis. Sudation et sodium (bilan hydrique de base)                       */
+/* -------------------------------------------------------------------------- */
+
+export const SUDATION = Object.freeze({
+  // Surface corporelle — Du Bois & Du Bois (1916) :
+  //   S (m²) = COEFF × taille_cm^EXP_TAILLE × masse_kg^EXP_MASSE
+  // Contrôle : 175 cm, 70 kg → 1.85 m². [Du Bois & Du Bois 1916]
+  DU_BOIS_COEFF: 0.007184,
+  DU_BOIS_EXP_TAILLE: 0.725,
+  DU_BOIS_EXP_MASSE: 0.425,
+
+  // Part de l'énergie métabolique dissipée en chaleur (1 − rendement
+  // mécanique de la course).
+  // // HYPOTHÈSE DE MODÉLISATION — fourchette 0.75–0.80
+  FRACTION_CHALEUR: 0.78,
+
+  // Échange thermique « sec » (convection forcée + rayonnement) chez un
+  // coureur, en W/m²/K.
+  // // HYPOTHÈSE DE MODÉLISATION — fourchette 8–25
+  COEFF_ECHANGE_W_PAR_M2_K: 15,
+
+  // Température de la peau à l'effort.
+  // [Valeur physiologique usuelle ; fourchette 32–35 °C]
+  TEMPERATURE_PEAU_C: 33,
+
+  // Conversion watt → kcal/h (1 W ≈ 0.8598 kcal/h).
+  W_VERS_KCAL_PAR_H: 0.86,
+
+  // Chaleur latente de vaporisation de la sueur : ≈ 2426 J/g = 580 kcal/L.
+  // [Physique standard]
+  CHALEUR_LATENTE_KCAL_PAR_L: 580,
+
+  // Fraction de la sueur qui s'évapore vraiment (le reste goutte et ne
+  // refroidit pas).
+  // // HYPOTHÈSE DE MODÉLISATION — fourchette 0.6–0.9
+  EFFICACITE_EVAPORATIVE: 0.8,
+
+  // Bornes du taux de sudation.
+  // [GSSI SSE-161 : 0.5–2.0 L/h typique, > 3.0 exceptionnel]
+  SUDATION_MIN_L_PAR_H: 0.3,
+  SUDATION_MAX_L_PAR_H: 3.0,
+
+  // Concentration en sodium de la sueur selon le profil « sueur salée »,
+  // en mmol/L. [GSSI SSE-161 : 10–90 mmol/L]
+  SODIUM_SUEUR_MMOL_PAR_L: Object.freeze({ faible: 20, moyen: 40, eleve: 70 }),
+
+  // Masse molaire du sodium. [GSSI SSE-161]
+  MG_PAR_MMOL_SODIUM: 22.99,
+
+  // Perte de masse corporelle (%) au-delà de laquelle la performance se
+  // dégrade nettement. [GSSI SSE-161]
+  SEUIL_DESHYDRATATION_PCT_MASSE: 2,
+});
+
+/* -------------------------------------------------------------------------- */
 /* 12. Seuils de simulation et d'événements                                  */
 /* -------------------------------------------------------------------------- */
 
@@ -446,6 +501,7 @@ export const VALEURS_ADMISES = Object.freeze({
   niveau: Object.freeze(['debutant', 'regulier', 'confirme', 'elite']),
   recharge: Object.freeze(['non', 'partielle', 'complete']),
   entrainementIntestinal: Object.freeze(['jamais', 'occasionnel', 'regulier']),
+  sueurSalee: Object.freeze(['faible', 'moyen', 'eleve']),
   petitDejeuner: Object.freeze([true, false]),
   typePrise: Object.freeze(['glucose', 'glucose-fructose']),
   terrain: Object.freeze(['route', 'cheminRoulant', 'sentier', 'technique']),
