@@ -8,36 +8,72 @@
   </head>
   <body>
     <main>
-      <h1>Simulateur — mode route</h1>
-      <p>
-        Version de travail. Les résultats s'affichent en texte et en tableau ;
-        les graphiques viendront ensuite. Modifie un champ : tout se recalcule.
+      <h1>Simulateur — préparer sa course</h1>
+      <p class="sous-titre">
+        À ouvrir dès l'inscription, pas la veille. On commence par comprendre ce
+        que la course va coûter ; le ravitaillement vient après.
       </p>
 
-      <p class="encart avertissement">
-        Ce site est un outil pédagogique. Les modèles présentés sont des
-        approximations issues de la littérature scientifique et ne remplacent
-        pas un avis médical ni l'accompagnement d'un diététicien du sport. La
-        réponse individuelle varie fortement : teste toujours ta stratégie à
-        l'entraînement, jamais le jour J.
+      <p class="avertissement">
+        Outil pédagogique. Les modèles sont des approximations issues de la
+        littérature scientifique ; ils ne remplacent ni un avis médical ni un
+        diététicien du sport. Teste toujours ta stratégie à l'entraînement,
+        jamais le jour J.
       </p>
 
       <form id="formulaire">
-        <fieldset>
-          <legend>Profil coureur</legend>
-          <div class="champs-grille">
-            <div>
+        <!-- ============================ BLOC 1 ============================ -->
+        <section class="bloc" id="bloc-profil">
+          <header><span class="numero">1</span><h2>Qui tu es</h2></header>
+
+          <div class="champs">
+            <div class="champ">
               <label for="sexe">Sexe</label>
               <select id="sexe">
                 <option value="H">Homme</option>
                 <option value="F">Femme</option>
               </select>
+              <details class="pourquoi">
+                <summary>pourquoi ça compte ?</summary>
+                <div>
+                  La masse musculaire représente une part différente du corps
+                  selon le sexe (environ 45 % chez les hommes, 36 % chez les
+                  femmes dans ce modèle). Comme le glycogène — ta réserve de
+                  sucre — est stocké dans le muscle, cette part fixe la taille de
+                  tes réserves.
+                </div>
+              </details>
             </div>
-            <div>
+
+            <div class="champ">
+              <label for="tailleCm">Taille (cm)</label>
+              <input id="tailleCm" type="number" min="140" max="210" step="1" value="175" />
+              <details class="pourquoi">
+                <summary>pourquoi ça compte ?</summary>
+                <div>
+                  Ta taille, avec ta masse, donne ta surface de peau. Plus cette
+                  surface est grande, plus tu évacues de chaleur par convection
+                  et par évaporation de la sueur — donc plus, ou moins, tu
+                  transpires pour une même puissance.
+                </div>
+              </details>
+            </div>
+
+            <div class="champ">
               <label for="masseKg">Masse corporelle (kg)</label>
-              <input id="masseKg" type="number" min="40" max="120" step="1" value="70" />
+              <input id="masseKg" type="number" min="40" max="120" step="0.5" value="70" />
+              <details class="pourquoi">
+                <summary>pourquoi ça compte ?</summary>
+                <div>
+                  Courir un kilomètre coûte environ 1 kcal par kilo de corps : ta
+                  masse fixe donc directement la dépense. Elle fixe aussi la
+                  taille des réserves de glycogène, proportionnelles à la masse
+                  musculaire. C'est un paramètre de calcul, pas un objectif.
+                </div>
+              </details>
             </div>
-            <div>
+
+            <div class="champ">
               <label for="niveau">Niveau</label>
               <select id="niveau">
                 <option value="debutant">Débutant</option>
@@ -45,131 +81,155 @@
                 <option value="confirme">Confirmé</option>
                 <option value="elite">Élite</option>
               </select>
-            </div>
-            <div>
-              <label for="recharge">Recharge glucidique</label>
-              <select id="recharge">
-                <option value="non" selected>Non</option>
-                <option value="partielle">Partielle</option>
-                <option value="complete">Complète</option>
-              </select>
-            </div>
-            <div>
-              <label for="entrainementIntestinal">Entraînement intestinal</label>
-              <select id="entrainementIntestinal">
-                <option value="jamais">Jamais</option>
-                <option value="occasionnel" selected>Occasionnel</option>
-                <option value="regulier">Régulier</option>
-              </select>
-            </div>
-            <div>
-              <label for="petitDejeuner">Petit-déjeuner pris</label>
-              <select id="petitDejeuner">
-                <option value="oui" selected>Oui</option>
-                <option value="non">Non</option>
-              </select>
+              <p class="indice" id="niveau-libelle"></p>
+              <details class="pourquoi">
+                <summary>pourquoi ça compte ?</summary>
+                <div>
+                  Un muscle entraîné stocke plus de glycogène (environ
+                  110 mmol/kg chez un débutant, 150 chez un coureur entraîné) et
+                  brûle une part plus grande de lipides à intensité égale. Le
+                  niveau sert aussi de VMA de repli quand tu ne renseignes pas la
+                  tienne au bloc 3.
+                </div>
+              </details>
             </div>
           </div>
-        </fieldset>
+        </section>
 
-        <fieldset>
-          <legend>Course</legend>
-          <div class="champs-grille">
-            <div>
+        <!-- ============================ BLOC 2 ============================ -->
+        <section class="bloc" id="bloc-course">
+          <header><span class="numero">2</span><h2>Ta course</h2></header>
+
+          <div class="champs">
+            <div class="champ">
               <label for="distanceKm">Distance (km)</label>
               <input id="distanceKm" type="number" min="5" max="100" step="0.001" value="42.195" />
+              <p class="indice">
+                Raccourcis :
+                <button type="button" class="raccourci" data-km="10">10 km</button>
+                <button type="button" class="raccourci" data-km="21.0975">semi</button>
+                <button type="button" class="raccourci" data-km="42.195">marathon</button>
+              </p>
+              <details class="pourquoi">
+                <summary>pourquoi ça compte ?</summary>
+                <div>
+                  La distance, combinée au temps visé, donne ton allure. C'est
+                  l'allure — pas la distance seule — qui détermine à quelle
+                  fraction de tes capacités tu cours, et donc la part de sucre
+                  que tu brûles.
+                </div>
+              </details>
             </div>
-            <div>
-              <label for="intensitePct">Intensité (% VO₂max)</label>
-              <input id="intensitePct" type="number" min="50" max="95" step="1" value="75" />
-            </div>
-            <div>
-              <label for="tempsHeures">Temps visé — heures</label>
-              <input id="tempsHeures" type="number" min="0" max="30" step="1" value="3" />
-            </div>
-            <div>
-              <label for="tempsMinutes">Temps visé — minutes</label>
-              <input id="tempsMinutes" type="number" min="0" max="59" step="1" value="30" />
-            </div>
-          </div>
-        </fieldset>
 
-        <fieldset>
-          <legend>Plan de ravitaillement</legend>
-          <p style="margin-top: 0">
-            <label style="display: inline">
-              <input id="aucunRavito" type="checkbox" />
-              Aucun ravitaillement
-            </label>
-          </p>
-          <div class="champs-grille">
-            <div>
-              <label for="glucidesParHeure">Glucides visés (g/h)</label>
-              <input id="glucidesParHeure" type="number" min="0" max="200" step="5" value="60" />
-            </div>
-            <div>
-              <label for="typePrise">Type de glucides</label>
-              <select id="typePrise">
-                <option value="glucose">Glucose seul</option>
-                <option value="glucose-fructose" selected>Glucose + fructose</option>
-              </select>
-            </div>
-            <div>
-              <label for="intervalleMin">Intervalle entre prises (min)</label>
-              <input id="intervalleMin" type="number" min="5" max="60" step="1" value="20" />
-            </div>
-            <div>
-              <label for="eauParPriseMl">Eau par prise (ml)</label>
-              <input id="eauParPriseMl" type="number" min="0" max="1000" step="10" value="250" />
-            </div>
-            <div>
-              <label for="premierePriseMin">Première prise (min)</label>
-              <input id="premierePriseMin" type="number" min="0" max="120" step="1" value="20" />
+            <div class="champ">
+              <span class="pseudo-label">Temps visé</span>
+              <div style="display: flex; gap: 0.4rem; align-items: center">
+                <input id="tempsHeures" type="number" min="0" max="30" step="1" value="3" aria-label="temps visé, heures" style="width: 4rem" />
+                <span>h</span>
+                <input id="tempsMinutes" type="number" min="0" max="59" step="1" value="30" aria-label="minutes" style="width: 4rem" />
+                <span>min</span>
+              </div>
+              <p class="indice nombres" id="allure-au-km"></p>
+              <details class="pourquoi">
+                <summary>pourquoi ça compte ?</summary>
+                <div>
+                  Le temps visé fixe ton allure, donc l'intensité relative. Il
+                  fixe aussi la durée pendant laquelle tu dois tenir cette
+                  intensité : personne ne tient 85 % de ses capacités pendant
+                  quatre heures.
+                </div>
+              </details>
             </div>
           </div>
-        </fieldset>
+        </section>
+
+        <!-- ============================ BLOC 3 ============================ -->
+        <section class="bloc" id="bloc-capacite">
+          <header><span class="numero">3</span><h2>Ta capacité, et le verdict</h2></header>
+
+          <div class="champs">
+            <div class="champ">
+              <label for="vmaConnue">VMA connue (km/h) — optionnel</label>
+              <input id="vmaConnue" type="number" min="8" max="25" step="0.1" placeholder="ex. 16.5" />
+              <p class="indice">La source la plus fiable si tu la connais.</p>
+              <details class="pourquoi">
+                <summary>pourquoi ça compte ?</summary>
+                <div>
+                  La VMA est la vitesse à laquelle tu atteins ta consommation
+                  maximale d'oxygène. C'est la référence la plus fiable pour
+                  savoir si ton allure visée est un effort modéré ou proche de ta
+                  limite.
+                </div>
+              </details>
+            </div>
+
+            <div class="champ champ--large">
+              <span class="pseudo-label">Performance récente — optionnel</span>
+              <div style="display: flex; gap: 0.4rem; align-items: center; flex-wrap: wrap">
+                <input id="perfDistanceKm" type="number" min="1" max="100" step="0.1" placeholder="km" style="width: 5rem" aria-label="distance de la performance en km" />
+                <span>en</span>
+                <input id="perfHeures" type="number" min="0" max="30" step="1" placeholder="h" style="width: 4rem" aria-label="heures" />
+                <span>h</span>
+                <input id="perfMinutes" type="number" min="0" max="59" step="1" placeholder="min" style="width: 4rem" aria-label="minutes" />
+                <span>min</span>
+              </div>
+              <p class="indice">
+                Seconde source, si tu ne connais pas ta VMA : une course faite à
+                fond récemment.
+              </p>
+              <details class="pourquoi">
+                <summary>pourquoi ça compte ?</summary>
+                <div>
+                  À partir d'une course récente courue à fond, on remonte à ta
+                  VMA : on suppose que tu tenais alors le maximum possible pour
+                  cette durée. Moins précis qu'une VMA mesurée, mais mieux qu'une
+                  estimation par le niveau seul.
+                </div>
+              </details>
+            </div>
+          </div>
+
+          <details class="pourquoi" style="margin-top: 0.8rem">
+            <summary>je ne connais pas ma VMA</summary>
+            <div>
+              Test du demi-Cooper : sur une piste, cours la plus grande distance
+              possible en 6 minutes, puis divise cette distance en mètres par
+              100. 1 500 m parcourus → VMA ≈ 15 km/h. Fais-le reposé, après
+              échauffement. L'estimation reste approximative (la variabilité
+              individuelle est de l'ordre de 25 %).
+            </div>
+          </details>
+
+          <!-- Sorties du bloc, remplies par simulateur.js -->
+          <div class="ligne-cle" id="vma-retenue"></div>
+          <p class="effort-phrase" id="effort-demande"></p>
+          <details class="pourquoi" id="pourquoi-effort" hidden>
+            <summary>pourquoi ce chiffre ?</summary>
+            <div id="pourquoi-effort-texte"></div>
+          </details>
+          <div id="verdict"></div>
+          <ul class="diagnostics" id="verdict-diagnostics"></ul>
+        </section>
+
+        <!-- ===================== BLOCS 4 ET 5 — à venir ===================== -->
+        <section class="bloc bloc-a-venir" id="bloc-cout">
+          <header><span class="numero">4</span><h2>Ce que ta course va coûter</h2></header>
+          <p>Bandeau des quatre chiffres, météo par normales saisonnières,
+          premier graphique. — à venir, étape 5b.</p>
+        </section>
+
+        <section class="bloc bloc-a-venir" id="bloc-couverture">
+          <header><span class="numero">5</span><h2>Comment le couvrir</h2></header>
+          <p>Stratégies, catalogue d'aliments, tableau de course, courbe fantôme.
+          — à venir, étape 5c.</p>
+        </section>
       </form>
 
-      <section id="resultats" aria-live="polite">
-        <h2>Synthèse</h2>
-        <div id="synthese"></div>
-
-        <h2>Diagnostics</h2>
-        <ul class="diagnostics" id="diagnostics"></ul>
-
-        <h2>Sans ravitaillement (comparaison)</h2>
-        <div id="fantome"></div>
-
-        <h2>Déroulé de la course</h2>
-        <div class="tableau-enveloppe">
-          <table id="tableau">
-            <thead>
-              <tr>
-                <th scope="col">min</th>
-                <th scope="col">km</th>
-                <th scope="col">kcal/min</th>
-                <th scope="col">% gluc.</th>
-                <th scope="col">muscle g</th>
-                <th scope="col">muscle %</th>
-                <th scope="col">foie g</th>
-                <th scope="col">foie %</th>
-                <th scope="col">estomac g</th>
-                <th scope="col">intestin g</th>
-                <th scope="col">abs. g/min</th>
-              </tr>
-            </thead>
-            <tbody id="tableauCorps"></tbody>
-          </table>
-        </div>
-      </section>
-
       <footer class="avertissement">
-        <p>
-          Outil pédagogique. En cas de trouble digestif persistant, de malaise,
-          ou de pathologie connue (diabète, troubles digestifs chroniques,
-          troubles du comportement alimentaire, grossesse, traitement en cours),
-          consulte un professionnel de santé.
-        </p>
+        En cas de trouble digestif persistant, de malaise, ou de pathologie
+        connue (diabète, troubles digestifs chroniques, troubles du comportement
+        alimentaire, grossesse, traitement en cours), consulte un professionnel
+        de santé. <a href="sources.html">Sources et méthode</a>.
       </footer>
     </main>
 

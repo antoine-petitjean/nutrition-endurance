@@ -1,214 +1,299 @@
 /**
- * simulateur.js — l'interface.
+ * simulateur.js — l'interface (étape 5a : blocs 1, 2, 3 et le verdict).
  * =============================================================================
  *
- * Rôle : lire les champs du formulaire, appeler le moteur (modele.js), afficher
- * les résultats en texte et en tableau. AUCUNE physiologie ici — le moteur
- * fait tous les calculs, l'interface ne fait que présenter.
+ * Rôle : lire le formulaire, appeler le moteur, afficher la capacité et le
+ * verdict de faisabilité. AUCUNE physiologie ici — le moteur calcule, l'interface
+ * présente. C'est ici qu'on transforme les CODES de diagnostic en phrases.
  *
- * C'est ici, et pas dans le moteur, qu'on transforme les CODES de diagnostic
- * en phrases françaises (décision arrêtée : le moteur reste sans langue).
+ * Blocs 4 (coût) et 5 (couverture) : étapes 5b et 5c.
  * =============================================================================
  */
 
-import { simuler, vitesseMPerMinDepuisTemps } from './modele.js';
-
-/* -------------------------------------------------------------------------- */
-/* Lecture du formulaire                                                     */
-/* -------------------------------------------------------------------------- */
+import {
+  simuler,
+  vitesseMPerMinDepuisTemps,
+  estimerVmaDepuisPerf,
+} from './modele.js';
+import { INTENSITE } from './constantes.js';
 
 const $ = (id) => document.getElementById(id);
 
-function lireFormulaire() {
-  const distanceKm = Number($('distanceKm').value);
-  const tempsMin = Number($('tempsHeures').value) * 60 + Number($('tempsMinutes').value);
-
-  return {
-    profil: {
-      sexe: $('sexe').value,
-      masseKg: Number($('masseKg').value),
-      niveau: $('niveau').value,
-      recharge: $('recharge').value,
-      entrainementIntestinal: $('entrainementIntestinal').value,
-      petitDejeuner: $('petitDejeuner').value === 'oui',
-    },
-    course: {
-      distanceKm,
-      vitesseMoyenneMPerMin: vitesseMPerMinDepuisTemps(distanceKm, tempsMin),
-      intensitePctVO2max: Number($('intensitePct').value),
-    },
-    massePorteeKg: 0,
-    terrain: 'route',
-    penteMoyenneTangente: 0,
-    plan: construirePlan(tempsMin),
-  };
-}
-
-/** Construit un plan régulier à partir des champs « ravitaillement ». */
-function construirePlan(dureeMin) {
-  if ($('aucunRavito').checked) return [];
-
-  const glucidesParHeure = Number($('glucidesParHeure').value);
-  const intervalleMin = Number($('intervalleMin').value);
-  const eauParPriseMl = Number($('eauParPriseMl').value);
-  const premierePriseMin = Number($('premierePriseMin').value);
-  const type = $('typePrise').value;
-
-  if (glucidesParHeure <= 0 || intervalleMin <= 0) return [];
-
-  const glucidesParPrise = glucidesParHeure * (intervalleMin / 60);
-  const plan = [];
-  for (let t = premierePriseMin; t < dureeMin; t += intervalleMin) {
-    plan.push({ instantMin: t, glucidesG: glucidesParPrise, type, eauMl: eauParPriseMl });
-  }
-  return plan;
-}
-
 /* -------------------------------------------------------------------------- */
-/* Mise en forme                                                             */
+/* Libellés                                                                  */
 /* -------------------------------------------------------------------------- */
 
-function formatTemps(minutes) {
-  const h = Math.floor(minutes / 60);
-  const m = Math.round(minutes % 60);
-  return h > 0 ? `${h} h ${String(m).padStart(2, '0')}` : `${m} min`;
+const NIVEAU_LIBELLE = {
+  debutant: "moins de 2 sorties par semaine, ou moins d'un an de pratique",
+  regulier: '3 à 4 sorties par semaine depuis plus d’un an',
+  confirme: '5 sorties ou plus, avec du travail de vitesse',
+  elite: 'compétiteur, volume élevé toute l’année',
+};
+
+/** Phrase de ressenti selon le pourcentage BRUT de VO₂max. Approximatif. */
+function ressentiEffort(pctBrut) {
+  if (pctBrut >= 100) return 'au-delà de ta capacité maximale — intenable plus de quelques minutes';
+  if (pctBrut >= 88) return "l'allure du 10 km ou plus vif — parler devient difficile";
+  if (pctBrut >= 80) return "l'allure semi / seuil — un mot ou deux";
+  if (pctBrut >= 68) return "l'allure marathon — trois mots à la fois, pas une phrase";
+  if (pctBrut >= 55) return "de l'endurance fondamentale — tu parles par phrases";
+  return 'un effort très facile — tu tiens une vraie conversation';
 }
 
-/** Traduit un code de diagnostic du moteur en phrase française. */
+const POURQUOI_EFFORT =
+  "Ce pourcentage vient du rapport entre la consommation d'oxygène estimée à " +
+  "ton allure et celle estimée à ta VMA (équation ACSM : VO₂ = 3,5 + 0,2 × " +
+  "vitesse en m/min). On l'exprime en pourcentage de VO₂max, ta consommation " +
+  "maximale d'oxygène.";
+
+/** Phrase française pour les diagnostics affichés dans le bloc 3. */
 function phraseDiagnostic(diag) {
-  const ou = (d) =>
-    d.km != null ? `au km ${d.km} (${formatTemps(d.minute)})` : `à ${formatTemps(d.minute)}`;
-
   switch (diag.code) {
-    case 'HYPOGLYCEMIE':
-      return `Hypoglycémie : le foie ne suit plus, la glycémie décroche ${ou(diag)}. C'est le coup de barre, la vision qui se trouble.`;
-    case 'MUR_MUSCULAIRE':
-      return `Mur musculaire : le glycogène des jambes est épuisé ${ou(diag)}. Les jambes deviennent « en bois ».`;
-    case 'EPUISEMENT_FOIE':
-      return `Le glycogène du foie tombe à zéro ${ou(diag)}.`;
-    case 'ZONE_CRITIQUE_MUSCLE':
-      return `Glycogène musculaire sous 20 % ${ou(diag)} : la baisse de régime devient perceptible.`;
-    case 'ZONE_CRITIQUE_FOIE':
-      return `Glycogène hépatique sous 20 % ${ou(diag)} : vigilance sur la glycémie.`;
-    case 'SURPLUS_DIGESTIF':
-      return `Surplus digestif : ${diag.valeurs.intestinG} g de glucides restent bloqués dans l'intestin en fin de course (${diag.valeurs.digestifTotalG} g avec l'estomac). Au-delà du plafond d'absorption, en ajouter ne sert à rien et se paie.`;
+    case 'OBJECTIF_IRREALISTE':
+      return (
+        `À ${diag.intensiteDemandee} % de tes capacités, cette allure n'est pas ` +
+        `tenable sur toute la durée (maximum ${diag.plafondSoutenable} %). Tu ` +
+        `ralentirais en course ; un temps réaliste serait plutôt ${formatDuree(diag.tempsRealisteMin)}. ` +
+        `Corrige le temps visé au bloc 2, ou ta VMA ci-dessus.`
+      );
+    case 'OBJECTIF_TRES_EN_DECA':
+      return (
+        `Tu serais à ${diag.intensiteDemandee} % de tes capacités, soit ${diag.ecartPct} ` +
+        `points sous le maximum tenable (${diag.plafondSoutenable} %). Tu pourrais ` +
+        `viser nettement plus vite si c'est ton intention.`
+      );
     default:
       return diag.code;
   }
 }
 
-function classeGravite(gravite) {
-  if (gravite === 'critique') return 'diag-critique';
-  if (gravite === 'attention') return 'diag-attention';
-  return 'diag-ok';
+/* -------------------------------------------------------------------------- */
+/* Format                                                                    */
+/* -------------------------------------------------------------------------- */
+
+function formatDuree(minutes) {
+  const h = Math.floor(minutes / 60);
+  const m = Math.round(minutes % 60);
+  return h > 0 ? `${h} h ${String(m).padStart(2, '0')}` : `${m} min`;
+}
+
+function formatAllure(minParKm) {
+  if (!Number.isFinite(minParKm) || minParKm <= 0) return '—';
+  const m = Math.floor(minParKm);
+  const s = Math.round((minParKm - m) * 60);
+  return `${m}:${String(s).padStart(2, '0')} /km`;
+}
+
+/* -------------------------------------------------------------------------- */
+/* Persistance du profil (localStorage, schéma v1)                           */
+/* -------------------------------------------------------------------------- */
+
+const CLE_PROFIL = 'nutrition-endurance:profil:v1';
+
+function chargerProfil() {
+  try {
+    return JSON.parse(localStorage.getItem(CLE_PROFIL)) || {};
+  } catch {
+    return {};
+  }
+}
+
+function enregistrerProfil() {
+  try {
+    localStorage.setItem(
+      CLE_PROFIL,
+      JSON.stringify({
+        sexe: $('sexe').value,
+        tailleCm: $('tailleCm').value,
+        masseKg: $('masseKg').value,
+        niveau: $('niveau').value,
+      }),
+    );
+  } catch {
+    /* stockage indisponible : on continue sans persistance */
+  }
+}
+
+/* -------------------------------------------------------------------------- */
+/* Lecture du formulaire                                                     */
+/* -------------------------------------------------------------------------- */
+
+function nombre(id) {
+  const v = Number($(id).value);
+  return Number.isFinite(v) ? v : NaN;
+}
+
+function lireFormulaire() {
+  const distanceKm = nombre('distanceKm');
+  const tempsViseMin = nombre('tempsHeures') * 60 + nombre('tempsMinutes');
+  const vmaConnueKmh = $('vmaConnue').value === '' ? null : nombre('vmaConnue');
+  const perfDistanceKm = $('perfDistanceKm').value === '' ? null : nombre('perfDistanceKm');
+  const perfMin =
+    $('perfHeures').value === '' && $('perfMinutes').value === ''
+      ? null
+      : nombre('perfHeures') * 60 + nombre('perfMinutes');
+
+  return {
+    sexe: $('sexe').value,
+    tailleCm: nombre('tailleCm'),
+    masseKg: nombre('masseKg'),
+    niveau: $('niveau').value,
+    distanceKm,
+    tempsViseMin,
+    vmaConnueKmh,
+    perfDistanceKm,
+    perfMin,
+  };
+}
+
+/**
+ * VMA retenue et sa provenance : VMA connue > performance récente > niveau.
+ * @returns {{ kmh: number, provenance: string }}
+ */
+function vmaRetenue(f) {
+  if (f.vmaConnueKmh && f.vmaConnueKmh >= 8 && f.vmaConnueKmh <= 25) {
+    return { kmh: f.vmaConnueKmh, provenance: 'précision élevée — tu l’as renseignée' };
+  }
+  if (f.perfDistanceKm > 0 && f.perfMin > 0) {
+    const est = estimerVmaDepuisPerf({
+      distanceKm: f.perfDistanceKm,
+      tempsMin: f.perfMin,
+      niveau: f.niveau,
+    });
+    if (est != null) {
+      return { kmh: est, provenance: 'bonne — estimée d’une performance récente' };
+    }
+  }
+  return {
+    kmh: INTENSITE.VMA_DEFAUT_PAR_NIVEAU_KMH[f.niveau],
+    provenance: 'approximative — d’après ton niveau, faute de mieux',
+  };
 }
 
 /* -------------------------------------------------------------------------- */
 /* Rendu                                                                     */
 /* -------------------------------------------------------------------------- */
 
-function rendre(resultat) {
+function rendre() {
+  const f = lireFormulaire();
+
+  // Libellé du niveau + allure au km, indépendants du moteur.
+  $('niveau-libelle').textContent = NIVEAU_LIBELLE[f.niveau] ?? '';
+  $('allure-au-km').textContent =
+    f.distanceKm > 0 && f.tempsViseMin > 0
+      ? `soit ${formatAllure(f.tempsViseMin / f.distanceKm)}`
+      : '';
+
+  const zoneVma = $('vma-retenue');
+  const zoneEffort = $('effort-demande');
+  const zoneVerdict = $('verdict');
+  const zoneDiag = $('verdict-diagnostics');
+  zoneDiag.innerHTML = '';
+
+  if (!(f.distanceKm > 0) || !(f.tempsViseMin > 0) || !(f.masseKg > 0)) {
+    zoneVma.innerHTML = '';
+    zoneEffort.textContent = 'Renseigne la distance, le temps visé et ta masse.';
+    zoneVerdict.innerHTML = '';
+    $('pourquoi-effort').hidden = true;
+    return;
+  }
+
+  const vma = vmaRetenue(f);
+
+  const resultat = simuler({
+    profil: {
+      sexe: f.sexe,
+      masseKg: f.masseKg,
+      tailleCm: f.tailleCm,
+      niveau: f.niveau,
+      vmaConnueKmh: vma.kmh, // on passe toujours la VMA retenue
+      // Paramètres « jour J » non demandés (outil de préparation) : défauts.
+      recharge: 'non',
+      petitDejeuner: true,
+      entrainementIntestinal: 'occasionnel',
+      sueurSalee: 'moyen',
+    },
+    course: {
+      distanceKm: f.distanceKm,
+      vitesseMoyenneMPerMin: vitesseMPerMinDepuisTemps(f.distanceKm, f.tempsViseMin),
+      // pas d'intensitePctVO2max → le moteur la déduit de la VMA retenue
+    },
+    plan: [],
+  });
+
   const s = resultat.synthese;
+  const brut = s.intensiteBrutePctVO2max;
+  const plafond = s.plafondSoutenablePct;
 
-  // --- Synthèse ---
-  const verdict = s.hypoglycemie || s.murMusculaire
-    ? 'Sur ce plan, tu tapes dans le mur avant l\'arrivée.'
-    : s.muscleResiduelFraction < 0.2
-      ? 'Tu termines, mais réserves quasi à sec.'
-      : 'Réserves suffisantes jusqu\'à l\'arrivée.';
+  // VMA retenue
+  zoneVma.innerHTML = `
+    <span>VMA retenue :</span>
+    <span class="valeur">${vma.kmh.toFixed(1)} km/h</span>
+    <span class="provenance">${vma.provenance}</span>`;
 
-  $('synthese').innerHTML = `
-    <p class="verdict">${verdict}</p>
-    <p class="nombres">
-      Dépense totale : <strong>${s.depenseTotaleKcal} kcal</strong><br />
-      Glucides ingérés : ${s.glucidesIngeresG} g &nbsp;•&nbsp;
-      absorbés : ${s.glucidesAbsorbesG} g &nbsp;•&nbsp;
-      oxydés : ${s.glucidesOxydesG} g<br />
-      Réserve musculaire à l'arrivée :
-      <strong>${s.muscleResiduelG} g</strong>
-      (${Math.round(s.muscleResiduelFraction * 100)} % du départ)<br />
-      Réserve hépatique à l'arrivée :
-      <strong>${s.foieResiduelG} g</strong>
-      (${Math.round(s.foieResiduelFraction * 100)} % du départ)<br />
-      Surplus coincé dans l'intestin : ${s.surplusIntestinalFinG} g
-    </p>`;
+  // Effort demandé
+  zoneEffort.textContent =
+    `Cette allure te demande ${Math.round(brut)} % de ta capacité maximale — ` +
+    `c'est ${ressentiEffort(brut)}.`;
+  $('pourquoi-effort-texte').textContent = POURQUOI_EFFORT;
+  $('pourquoi-effort').hidden = false;
 
-  // --- Diagnostics ---
-  const liste = $('diagnostics');
-  liste.innerHTML = '';
-  if (resultat.diagnostics.length === 0) {
-    liste.innerHTML = '<li class="diag-ok">Rien à signaler : le plan tient.</li>';
-  } else {
-    for (const diag of resultat.diagnostics) {
-      const li = document.createElement('li');
-      li.className = classeGravite(diag.gravite);
-      li.textContent = phraseDiagnostic(diag);
-      liste.appendChild(li);
-    }
+  // Verdict
+  let classe = 'verdict--ok';
+  let etiquette = 'Objectif tenable';
+  let phrase = `Tu serais à ${brut.toFixed(1)} % de tes capacités, pour un maximum tenable de ${plafond.toFixed(1)} % sur cette durée.`;
+
+  if (s.objectifIrrealiste) {
+    classe = 'verdict--danger';
+    etiquette = 'Objectif hors de portée';
+    phrase =
+      `Tu serais à ${brut.toFixed(1)} %, au-dessus du maximum tenable de ${plafond.toFixed(1)} % ` +
+      `sur cette durée. Un temps réaliste serait plutôt ${formatDuree(s.objectifIrrealiste.tempsRealisteMin)}.`;
+  } else if (s.objectifTresEnDeca) {
+    classe = 'verdict--attention';
+    etiquette = 'Objectif large';
+    phrase =
+      `Tu serais à ${brut.toFixed(1)} %, très en dessous du maximum tenable de ${plafond.toFixed(1)} %. ` +
+      `Tu as de la marge — tu pourrais viser plus vite.`;
   }
 
-  // --- Comparaison sans ravitaillement ---
-  const f = resultat.fantome;
-  const premiereDefaillance = [f.hypoglycemie, f.murMusculaire]
-    .filter(Boolean)
-    .sort((a, b) => a.minute - b.minute)[0];
-  $('fantome').innerHTML = premiereDefaillance
-    ? `<p>Sans aucune prise, première défaillance estimée
-       <strong>au km ${premiereDefaillance.km}</strong>,
-       à ${formatTemps(premiereDefaillance.minute)}
-       ${f.hypoglycemie && premiereDefaillance === f.hypoglycemie ? '(hypoglycémie)' : '(mur musculaire)'}.</p>`
-    : '<p>Même sans ravitaillement, les réserves tiendraient jusqu\'à l\'arrivée sur ce profil.</p>';
+  zoneVerdict.className = `verdict ${classe}`;
+  zoneVerdict.innerHTML = `<span class="etiquette">${etiquette}</span><p>${phrase}</p>`;
 
-  // --- Tableau du déroulé (une ligne toutes les 15 min + la dernière) ---
-  const corps = $('tableauCorps');
-  corps.innerHTML = '';
-  const T = resultat.temps;
-  const E = resultat.energie;
-  const G = resultat.glycogene;
-  const C = resultat.glucides;
-  const dernier = T.minutes.length - 1;
-
-  const indices = [];
-  for (let i = 0; i <= dernier; i += 15) indices.push(i);
-  if (indices[indices.length - 1] !== dernier && dernier > 0) indices.push(dernier);
-
-  for (const i of indices) {
-    const tr = document.createElement('tr');
-    const cellules = [
-      T.minutes[i],
-      T.distanceKm[i].toFixed(1),
-      E.puissanceKcalMin[i].toFixed(1),
-      Math.round(E.fractionGlucides[i] * 100),
-      Math.round(G.muscleG[i]),
-      Math.round(G.muscleFraction[i] * 100),
-      Math.round(G.foieG[i]),
-      Math.round(G.foieFraction[i] * 100),
-      Math.round(C.estomacG[i]),
-      Math.round(C.lumenTotalG[i]),
-      C.absorptionGMin[i].toFixed(2),
-    ];
-    for (const valeur of cellules) {
-      const td = document.createElement('td');
-      td.textContent = valeur;
-      tr.appendChild(td);
-    }
-    corps.appendChild(tr);
+  // Diagnostics d'objectif uniquement (les autres arrivent au bloc 4)
+  for (const diag of resultat.diagnostics) {
+    if (diag.code !== 'OBJECTIF_IRREALISTE' && diag.code !== 'OBJECTIF_TRES_EN_DECA') continue;
+    const li = document.createElement('li');
+    li.className = `diag--${diag.gravite}`;
+    li.textContent = phraseDiagnostic(diag);
+    zoneDiag.appendChild(li);
   }
 }
 
 /* -------------------------------------------------------------------------- */
-/* Boucle : recalcul à chaque changement                                     */
+/* Câblage                                                                   */
 /* -------------------------------------------------------------------------- */
 
-function recalculer() {
-  try {
-    rendre(simuler(lireFormulaire()));
-  } catch (erreur) {
-    $('synthese').innerHTML = `<p class="diag-critique">Erreur de calcul : ${erreur.message}</p>`;
-    // Utile pendant le développement : on garde la trace complète en console.
-    console.error(erreur);
+// Restaure le profil enregistré avant le premier rendu.
+{
+  const p = chargerProfil();
+  for (const [id, val] of Object.entries(p)) {
+    if (val !== undefined && val !== null && $(id)) $(id).value = val;
   }
 }
 
-$('formulaire').addEventListener('input', recalculer);
-recalculer();
+const form = $('formulaire');
+form.addEventListener('submit', (e) => e.preventDefault());
+form.addEventListener('input', () => {
+  enregistrerProfil();
+  rendre();
+});
+
+for (const bouton of document.querySelectorAll('.raccourci')) {
+  bouton.addEventListener('click', () => {
+    $('distanceKm').value = bouton.dataset.km;
+    rendre();
+  });
+}
+
+rendre();

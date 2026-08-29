@@ -1,186 +1,352 @@
 /**
- * style.css — feuille de style STARTER (phase 1).
- * Volontairement minimale : lisibilité, chiffres tabulaires, thème clair/sombre,
- * mobile-first. Le vrai design system (variables complètes, graphiques) viendra
- * avec les pages éditoriales.
+ * style.css — design system du site.
+ * =============================================================================
+ * Pas de dépendance, pas de police externe (CLAUDE.md §1). Police système.
+ * Thèmes clair et sombre via prefers-color-scheme. Mobile d'abord.
+ * Corps de texte ≥ 17 px, largeur de ligne 65–75 caractères, chiffres
+ * tabulaires pour les valeurs. L'information n'est jamais portée par la seule
+ * couleur : chaque état a aussi un mot ou une forme.
+ * =============================================================================
  */
+
+/* -------------------------------------------------------------------------- */
+/* Jetons de couleur                                                         */
+/* -------------------------------------------------------------------------- */
 
 :root {
   --fond: #ffffff;
-  --fond-encart: #f6f8fa;
-  --texte: #1a1a1a;
-  --texte-doux: #57606a;
-  --trait: #d0d7de;
-  --accent: #0969da;
+  --fond-doux: #f5f7fa;
+  --fond-encart: #eef1f6;
+  --texte: #17202a;
+  --texte-doux: #55606e;
+  --trait: #d3dae3;
+  --accent: #0b6bcb;
+  --accent-doux: #e4effb;
+
+  /* Échelle sémantique — la même partout dans le site. */
   --ok: #1a7f37;
-  --alerte: #9a6700;
-  --danger: #cf222e;
+  --ok-fond: #e6f4ea;
+  --attention: #9a6700;
+  --attention-fond: #fdf3e0;
+  --danger: #b32020;
+  --danger-fond: #fbeaea;
+
+  --rayon: 8px;
+  --pas: 1rem;
 }
 
 @media (prefers-color-scheme: dark) {
   :root {
     --fond: #0d1117;
-    --fond-encart: #161b22;
+    --fond-doux: #131924;
+    --fond-encart: #1b2330;
     --texte: #e6edf3;
-    --texte-doux: #9198a1;
-    --trait: #30363d;
-    --accent: #4c8dff;
-    --ok: #3fb950;
-    --alerte: #d29922;
-    --danger: #f85149;
+    --texte-doux: #9aa6b2;
+    --trait: #2f3947;
+    --accent: #58a6ff;
+    --accent-doux: #142a44;
+
+    --ok: #4cc663;
+    --ok-fond: #10241a;
+    --attention: #e0a83a;
+    --attention-fond: #2a2110;
+    --danger: #f2716c;
+    --danger-fond: #2c1615;
   }
 }
 
-* {
+/* -------------------------------------------------------------------------- */
+/* Base                                                                      */
+/* -------------------------------------------------------------------------- */
+
+*,
+*::before,
+*::after {
   box-sizing: border-box;
+}
+
+html {
+  -webkit-text-size-adjust: 100%;
 }
 
 body {
   margin: 0;
-  padding: 1rem;
-  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica,
+  padding: var(--pas);
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica,
     Arial, sans-serif;
   font-size: 17px;
   line-height: 1.6;
   color: var(--texte);
-  background: var(--fond);
+  background: var(--fond-doux);
 }
 
 main {
-  max-width: 70ch;
+  max-width: 42rem; /* ~68 caractères */
   margin: 0 auto;
 }
 
 h1 {
-  font-size: 1.5rem;
-  line-height: 1.3;
+  font-size: 1.55rem;
+  line-height: 1.25;
+  margin: 0 0 0.25rem;
+}
+
+.sous-titre {
+  color: var(--texte-doux);
+  margin-top: 0;
 }
 
 h2 {
   font-size: 1.15rem;
-  margin-top: 2rem;
-  border-bottom: 1px solid var(--trait);
-  padding-bottom: 0.25rem;
+  margin: 0;
+}
+
+p {
+  margin: 0.6rem 0;
 }
 
 a {
   color: var(--accent);
 }
 
-fieldset {
-  border: 1px solid var(--trait);
-  border-radius: 6px;
-  margin: 0 0 1rem;
-  padding: 0.75rem 1rem 1rem;
-}
-
-legend {
-  font-weight: 600;
-  padding: 0 0.4rem;
-}
-
-label {
-  display: block;
-  margin: 0.6rem 0 0.15rem;
-  font-size: 0.95rem;
-  color: var(--texte-doux);
-}
-
-input,
-select {
-  width: 100%;
-  padding: 0.4rem 0.5rem;
-  font-size: 1rem;
-  color: var(--texte);
-  background: var(--fond);
-  border: 1px solid var(--trait);
-  border-radius: 4px;
-}
-
-input[type="checkbox"] {
-  width: auto;
-  margin-right: 0.4rem;
-}
-
-.champs-grille {
-  display: grid;
-  gap: 0 1rem;
-  grid-template-columns: 1fr;
-}
-
-@media (min-width: 620px) {
-  .champs-grille {
-    grid-template-columns: 1fr 1fr;
-  }
-}
-
-.encart {
-  background: var(--fond-encart);
-  border: 1px solid var(--trait);
-  border-radius: 6px;
-  padding: 0.75rem 1rem;
-}
-
-.avertissement {
-  font-size: 0.9rem;
-  color: var(--texte-doux);
-}
-
 .nombres {
   font-variant-numeric: tabular-nums;
 }
 
-.verdict {
+/* -------------------------------------------------------------------------- */
+/* Blocs                                                                     */
+/* -------------------------------------------------------------------------- */
+
+.bloc {
+  background: var(--fond);
+  border: 1px solid var(--trait);
+  border-radius: var(--rayon);
+  padding: 1.1rem 1.15rem 1.25rem;
+  margin: 1rem 0;
+}
+
+.bloc > header {
+  display: flex;
+  align-items: baseline;
+  gap: 0.5rem;
+  margin-bottom: 0.4rem;
+}
+
+.bloc > header .numero {
+  font-variant-numeric: tabular-nums;
+  color: var(--texte-doux);
   font-weight: 600;
 }
 
-.diag-critique {
-  color: var(--danger);
+.bloc-a-venir {
+  border-style: dashed;
+  color: var(--texte-doux);
 }
 
-.diag-attention {
-  color: var(--alerte);
+/* -------------------------------------------------------------------------- */
+/* Champs                                                                    */
+/* -------------------------------------------------------------------------- */
+
+.champs {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 0.9rem 1.1rem;
 }
 
-.diag-ok {
-  color: var(--ok);
+@media (min-width: 34rem) {
+  .champs {
+    grid-template-columns: 1fr 1fr;
+  }
 }
 
-ul.diagnostics {
-  padding-left: 1.2rem;
+.champ label,
+.champ .pseudo-label {
+  display: block;
+  font-size: 0.95rem;
+  color: var(--texte-doux);
+  margin-bottom: 0.2rem;
 }
 
-.tableau-enveloppe {
-  overflow-x: auto;
-}
-
-table {
-  border-collapse: collapse;
+.champ input,
+.champ select {
   width: 100%;
+  padding: 0.45rem 0.55rem;
+  font-size: 1rem;
+  font-family: inherit;
+  color: var(--texte);
+  background: var(--fond);
+  border: 1px solid var(--trait);
+  border-radius: 6px;
+}
+
+.champ input:focus,
+.champ select:focus {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+.champ .indice {
   font-size: 0.85rem;
+  color: var(--texte-doux);
+  margin-top: 0.2rem;
+}
+
+.champ--large {
+  grid-column: 1 / -1;
+}
+
+/* Bouton « pourquoi ça compte ? » — un dépliant discret sous le champ. */
+.pourquoi {
+  margin-top: 0.3rem;
+  font-size: 0.85rem;
+}
+
+.pourquoi > summary {
+  cursor: pointer;
+  color: var(--accent);
+  width: fit-content;
+}
+
+.pourquoi > summary::marker {
+  color: var(--texte-doux);
+}
+
+.pourquoi > div {
+  margin-top: 0.35rem;
+  padding: 0.5rem 0.7rem;
+  background: var(--fond-encart);
+  border-radius: 6px;
+  color: var(--texte);
+}
+
+/* -------------------------------------------------------------------------- */
+/* Sorties du bloc 3                                                         */
+/* -------------------------------------------------------------------------- */
+
+.ligne-cle {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0.4rem 0.6rem;
+  margin: 0.5rem 0;
+}
+
+.ligne-cle .valeur {
+  font-size: 1.25rem;
+  font-weight: 700;
   font-variant-numeric: tabular-nums;
 }
 
-th,
-td {
+.provenance {
+  font-size: 0.85rem;
+  color: var(--texte-doux);
+}
+
+.effort-phrase {
+  font-size: 1.05rem;
+  margin: 0.6rem 0;
+}
+
+/* Encadré de verdict — couleur + mot + bordure épaisse à gauche. */
+.verdict {
+  border-left: 4px solid var(--trait);
+  background: var(--fond-encart);
+  border-radius: 6px;
+  padding: 0.7rem 0.9rem;
+  margin: 0.8rem 0;
+}
+
+.verdict .etiquette {
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  font-size: 0.8rem;
+}
+
+.verdict--ok {
+  border-left-color: var(--ok);
+  background: var(--ok-fond);
+}
+.verdict--ok .etiquette {
+  color: var(--ok);
+}
+
+.verdict--attention {
+  border-left-color: var(--attention);
+  background: var(--attention-fond);
+}
+.verdict--attention .etiquette {
+  color: var(--attention);
+}
+
+.verdict--danger {
+  border-left-color: var(--danger);
+  background: var(--danger-fond);
+}
+.verdict--danger .etiquette {
+  color: var(--danger);
+}
+
+/* Liste de diagnostics : chaque item préfixé d'un mot de gravité. */
+.diagnostics {
+  list-style: none;
+  padding: 0;
+  margin: 0.6rem 0 0;
+}
+
+.diagnostics li {
+  padding: 0.5rem 0.7rem;
+  border-radius: 6px;
+  margin: 0.35rem 0;
+  background: var(--fond-encart);
+}
+
+.diagnostics li::before {
+  font-weight: 700;
+  margin-right: 0.4rem;
+}
+
+.diag--critique {
+  background: var(--danger-fond);
+}
+.diag--critique::before {
+  content: 'Bloquant — ';
+  color: var(--danger);
+}
+
+.diag--attention {
+  background: var(--attention-fond);
+}
+.diag--attention::before {
+  content: 'Attention — ';
+  color: var(--attention);
+}
+
+.diag--info::before {
+  content: 'À noter — ';
+  color: var(--texte-doux);
+}
+
+/* -------------------------------------------------------------------------- */
+/* Divers                                                                    */
+/* -------------------------------------------------------------------------- */
+
+.avertissement {
+  font-size: 0.9rem;
+  color: var(--texte-doux);
+  background: var(--fond-encart);
   border: 1px solid var(--trait);
-  padding: 0.3rem 0.5rem;
-  text-align: right;
-  white-space: nowrap;
-}
-
-th {
-  background: var(--fond-encart);
-  position: sticky;
-  top: 0;
-}
-
-tbody tr:hover {
-  background: var(--fond-encart);
+  border-radius: var(--rayon);
+  padding: 0.75rem 0.9rem;
 }
 
 footer {
-  margin-top: 3rem;
-  padding-top: 1rem;
-  border-top: 1px solid var(--trait);
+  margin-top: 2.5rem;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  * {
+    animation-duration: 0.001ms !important;
+    transition-duration: 0.001ms !important;
+  }
 }
