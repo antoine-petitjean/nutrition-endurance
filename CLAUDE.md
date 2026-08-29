@@ -311,90 +311,116 @@ Constantes de soutenabilité : `// HYPOTHÈSE DE MODÉLISATION`, fourchette
 ±5 points, calibrées pour que les six cas de contrôle de `retour-etape4.md`
 passent.
 
-### 3.3 et 3.4 — L'interface : quatre blocs
+### 3.3 L'interface — cinq blocs
 
-La page suit l'ordre du site : **comprendre ce que la course coûte, PUIS comment
-le couvrir.** Quatre blocs, dans cet ordre strict : profil et course (entrées,
-blocs 1–2), puis coût et couverture (sorties, blocs 3–4).
+> **Spécification détaillée : `docs/spec-etape5.md`** (validée). Cette section en
+> donne le squelette ; en cas de doute, la spec fait foi.
 
-**Chaque champ de profil et de course porte un bouton « pourquoi ça compte ? »**
-qui déplie deux à quatre phrases expliquant le **mécanisme**, pas la consigne.
-Exemples : la taille détermine la surface corporelle, donc la capacité à évacuer
-la chaleur ; le niveau → un muscle entraîné stocke plus de glycogène
-(110 → 150 mmol/kg) et oxyde plus de lipides ; la recharge glucidique = protocole
-de 24–48 h à 8–12 g/kg/j qui sur-remplit le muscle jusqu'à 200 mmol/kg ;
-l'entraînement intestinal augmente la densité des transporteurs, ça s'entraîne ;
-le petit-déjeuner → une nuit de jeûne vide ~la moitié du glycogène du foie.
-Les libellés de niveau sont explicités (« régulier : 3 à 4 sorties/semaine depuis
-plus d'un an »), jamais laissés à l'interprétation.
+**Principe directeur : le simulateur est un outil de PRÉPARATION, pas du jour J.**
+On l'ouvre dès l'inscription à une course, des semaines ou des mois avant. Tout
+ce qu'on ne peut pas savoir si tôt — dernier repas, recharge glucidique,
+entraînement intestinal, salinité de la sueur — **disparaît de la saisie** et
+prend une valeur par défaut. Le moteur les utilise toujours ; l'interface ne les
+demande plus. Ces leviers reviendront dans deux sections ultérieures, « Les jours
+qui précèdent » et « Le jour J ».
 
-#### BLOC 1 — Profil coureur
+**Chaque champ porte un bouton « pourquoi ça compte ? »** qui déplie deux à
+quatre phrases expliquant le **mécanisme**, pas la consigne. **Chaque chiffre de
+sortie porte un « pourquoi ce chiffre ? »** qui déplie le calcul et les
+hypothèses. Aucun résultat ne tombe du ciel.
 
-Persisté en `localStorage` (avec numéro de version de schéma).
+Ordre strict : qui tu es → ta course → ta capacité et le verdict → ce que ça va
+coûter → comment le couvrir.
 
-| Paramètre | Plage | Défaut |
+#### BLOC 1 — Qui tu es  *(persisté en `localStorage`, avec version de schéma)*
+
+| Champ | Plage | Rôle moteur |
 |---|---|---|
-| Sexe | H / F | — |
-| Âge | 15–80 ans | 35 |
-| Taille | 140–210 cm | 175 |
-| Masse corporelle | 40–120 kg | 70 |
-| Niveau | débutant / régulier / confirmé / élite | régulier |
-| Recharge glucidique | non / partielle / complète | non |
-| Entraînement intestinal | jamais / occasionnel / régulier | occasionnel |
-| Sueur salée | faible / moyenne / élevée — « tu retrouves du sel blanc sur ta casquette ? » | moyenne |
-| Petit-déjeuner | case oui/non **+ zone de texte libre** de ce qui a été mangé | oui |
+| Sexe | H / F | fraction de masse musculaire (0.45 / 0.36) |
+| Taille | 140–210 cm | surface corporelle → échange thermique |
+| Masse corporelle | 40–120 kg | coût énergétique, taille des réserves |
+| Niveau | débutant / régulier / confirmé / élite | densité de glycogène, VMA de repli |
 
-#### BLOC 2 — Course
+**Supprimé : l'âge** (il n'agissait sur rien). **Par défaut, non demandés :**
+recharge = `non`, petit-déjeuner = `pris`, entraînement intestinal =
+`occasionnel`, sueur salée = `moyen`. Libellés de niveau explicités (« régulier :
+3 à 4 sorties/semaine depuis plus d'un an »).
 
-| Paramètre | Plage | Défaut |
-|---|---|---|
-| Distance | 5–100 km, raccourcis 10 km / semi / marathon | 42.195 |
-| Temps visé | l'**allure au km** est affichée automatiquement à côté | 3 h 30 |
-| Heure de départ | agit par le délai depuis le dernier repas → état du foie au départ | — |
-| Température | −5 à 40 °C | 15 |
+#### BLOC 2 — Ta course
 
-**L'intensité en % de VO₂max est retirée de la saisie.** Elle est **déduite** de
-l'allure visée et du niveau, puis **affichée en langage humain** : « environ 75 %
-de tes capacités — allure où tu peux dire trois mots, pas une phrase ». Le moteur
-en a besoin, l'utilisateur ne doit pas avoir à la connaître. *La méthode de
-déduction est un point de modélisation : la proposer à Antoine avant de coder.*
+Distance (5–100 km, raccourcis 10 km / semi / marathon) et temps visé, avec
+l'**allure au km affichée à côté**, l'un déduisant l'autre.
 
-**Plan de ravitaillement** (utilisé par le bloc 4) : liste de prises. Chaque
-prise = instant (min), glucides (g), type (glucose seul / glucose-fructose),
-eau associée (ml), ratio glucose:fructose optionnel. Ajout / modif / suppression.
+#### BLOC 3 — Ta capacité, et le verdict
 
-#### BLOC 3 — Ce que ta course va coûter *(avant tout ravitaillement)*
+- **VMA connue (km/h)**, optionnel (8–25) — source la plus fiable.
+- **Performance récente** (distance + temps), optionnel — seconde source, VMA
+  rétro-calculée via la courbe de soutenabilité (`// HYPOTHÈSE`).
+- Encadré dépliable « je ne connais pas ma VMA » : test du demi-Cooper (plus
+  grande distance en 6 min ÷ 100). [Billat & Koralsztein 1996 ; CV ≈ 25 %].
+- **VMA retenue** toujours affichée, avec sa provenance (précision élevée /
+  bonne / approximative), modifiable à la main.
+- **Effort demandé** (remplace « intensité ») : « cette allure te demande **77 %
+  de ta capacité maximale** — allure marathon, trois mots mais pas une phrase ».
+  Le terme VO₂max n'apparaît que dans le « pourquoi ce chiffre ? ».
+- **Verdict** : « Cet objectif tient : tu serais à 76,9 %, pour un maximum
+  tenable de 80,5 % sur cette durée. » Diagnostics `OBJECTIF_IRREALISTE` et
+  `OBJECTIF_TRES_EN_DECA`, avec le **pourcentage brut** et un lien vers le champ
+  à corriger.
+- **Jamais affiché : une VO₂max en ml/kg/min.**
 
-- **Bandeau** : dépense totale (kcal), glucides à brûler (g), eau à perdre (L),
-  sodium à perdre (mg).
-- **Les lipides brûlés sont affichés séparément**, étiquetés « information — tes
-  réserves de lipides ne limitent pas un marathon ». **Jamais** présentés comme
-  un besoin à couvrir.
-- **Graphique temporel** avec sélecteur de nutriment (glycogène musculaire /
-  hépatique / eau / sodium), annoté aux moments critiques (« km 21 — le foie est
-  vide, hypoglycémie », « km 36 — zone du mur »).
-- La **courbe du surplus digestif reste ici** : c'est le message central de
-  l'outil. Les troubles digestifs et l'hyperglycémie, eux, partent sur
-  `troubles-digestifs.html`.
-- **Courbe fantôme permanente** du scénario sans ravitaillement.
+#### BLOC 4 — Ce que ta course va coûter
 
-#### BLOC 4 — Comment le couvrir
+- **Contexte météo sans saisie de température** : date + lieu (≈ 100 villes
+  françaises embarquées) → normale saisonnière ; heure de départ → température au
+  départ **et son évolution minute par minute** pendant la course (min au lever
+  du jour, max en milieu d'après-midi — `// HYPOTHÈSE` sur la forme). Affichage
+  obligatoire : « ce n'est pas une prévision, c'est la moyenne observée ici à
+  cette période », avec la fourchette inter-annuelle. Curseur pour rejouer à une
+  autre température. **Aucun appel réseau.**
+- **Phrase centrale** : « Tu vas brûler **549 g** de glucides. Tu en as **436**
+  en réserve. » Chaque moitié se déplie avec le calcul (voir la spec).
+  ⚠ On affiche la **DEMANDE** (`glucidesDemandeG`, calculée sur l'allure cible),
+  pas le réalisé (`glucidesOxydesG`, qui baisse quand la course se passe mal).
+- **Quatre chiffres**, au futur : « ce que ça va te coûter » (kcal) · « glucides
+  que tu vas brûler » (g) · « eau que tu vas perdre » (L + % de masse) · « sel
+  que tu vas perdre » (mg). **Les lipides sont retirés de l'affichage** (les
+  montrer laisserait croire qu'il faut en manger).
+- **Graphique** : axe temporel, **un nutriment à la fois** (onglets : glycogène
+  musculaire / hépatique / eau / sodium), annoté aux moments qui comptent.
+  Tableau de valeurs repliable, accessible au clavier.
 
-- **Stratégies prédéfinies en cartes** : gels seuls / gels + boisson isotonique /
-  boisson isotonique seule / solide + boisson. Au clic, on saisit le grammage
-  (g par gel, concentration de la boisson) et le plan se génère.
-- **Tableau de course** — le livrable : « gel de 45 g tous les 7,2 km — km 7,2 /
-  14,4 / 21,6… ». Il change quand le grammage change. C'est ce qu'un coureur
-  emporte.
-- **Zone de texte libre** pour décrire ce qu'on veut manger → bibliothèque
-  d'aliments (3.6).
-- **Encadré** renvoyant vers `troubles-digestifs.html` : « au-delà de ce rythme,
-  le surplus s'accumule et se paie. »
+#### BLOC 5 — Comment le couvrir
 
-**Chaque chiffre affiché a un bouton « pourquoi ce chiffre ? »** qui déplie le
-calcul et les hypothèses. Aucun résultat ne tombe du ciel. Les graphiques sont
-en SVG dessiné main, synchronisés sur un axe temporel commun, avec curseur
-partagé et alternative en tableau de valeurs repliable.
+- **Objectif de la stratégie proposée : tenir la même allure du départ à
+  l'arrivée** (`fractionAllureTenable` à 1,0 partout), avec une marge résiduelle
+  affichée. Si aucune stratégie n'y suffit, le dire franchement (« même à
+  90 g/h, tu seras en déficit d'environ 150 g sur la fin ») — sans édulcorer,
+  sans conseiller de courir moins vite.
+- **Choix des produits** : cases multiples parmi les familles + « autre » →
+  texte libre. Pour chaque famille cochée, grammage (champ libre, raccourcis
+  20/25/30/40/50/60 g, fourchette usuelle annoncée, renvoi à l'étiquette).
+  **Aucune marque.** Note : un gel de 60 g d'un coup = charge osmotique lourde,
+  la courbe du contenu digestif doit le montrer.
+- **Tableau de course** — le livrable : « un gel de 45 g tous les 7,2 km —
+  km 7,2 / 14,4 / 21,6… ». Change avec le grammage.
+- **Second graphique** avec la **courbe fantôme permanente** (sans
+  ravitaillement, trait léger) — la comparaison rend l'effet de chaque prise
+  lisible. La **courbe du surplus digestif reste ici** : message principal de
+  l'outil.
+- Deux renvois : « Les risques si tu manges trop » (page à écrire) et « Les
+  jours qui précèdent » (recharge, entraînement intestinal — pourra rejouer la
+  simulation avec ces leviers activés).
+
+#### Découpage de l'étape 5
+
+- **5a** — blocs 1, 2, 3 + « pourquoi ça compte ? » + design system (thèmes
+  clair/sombre, mobile d'abord, corps ≥ 17 px) + verdict. **Arrêt pour
+  relecture.**
+- **5b** — bloc 4 : normales de température, `glucidesDemandeG`, les quatre
+  chiffres, premier graphique SVG.
+- **5c** — bloc 5 : stratégies, `aliments.js`, tableau de course, second
+  graphique avec courbe fantôme.
 
 ### 3.5 Critères d'acceptation de la phase 1
 
@@ -414,12 +440,12 @@ Le simulateur est réussi si :
 8. Les cas limites ne cassent rien : durée nulle, masse extrême, ingestion
    massive, température négative, aucune prise.
 
-### 3.6 Bibliothèque d'aliments — `assets/js/aliments.js`
+### 3.6 Catalogue d'aliments — `assets/js/aliments.js`
 
 Un agent IA est impossible sur un site statique (clé d'accès exposée, tout le
-code est public). À la place, un **catalogue de familles d'aliments** (pas de
-marques, règle §4), chacune avec : glucides/100 g, ratio glucose:fructose
-approximatif, eau, sodium, et des **synonymes de recherche**.
+code est public). À la place, **une centaine d'aliments réellement consommés en
+course à pied** (pas de marques, règle §4), chacun avec : glucides/100 g, rapport
+glucose:fructose approximatif, eau, sodium, **synonymes de recherche**.
 
 ```js
 { id: 'bonbon-gelifie', nom: 'Bonbon gélifié',
@@ -427,13 +453,17 @@ approximatif, eau, sodium, et des **synonymes de recherche**.
   glucidesPour100g: 77, ratio: [1, 0.9], sodiumMgPour100g: 25 }
 ```
 
-Recherche textuelle simple sur `nom` + `synonymes`. L'utilisateur tape « haribo »,
-le site répond « bonbon gélifié, 77 g de glucides pour 100 g → il te faut environ
-50 g par heure ». Hors ligne, vérifiable. **Chaque valeur sourcée : table Ciqual
-de l'ANSES pour les aliments courants — vérifier, ne pas inventer.**
+Familles à couvrir : gel énergétique, boisson isotonique, pâte de fruits, barre
+énergétique (valeurs typiques variables) ; compote à boire, banane, bonbon
+gélifié, fruits secs (abricot/datte/raisin — mentionner les fibres), pain
+d'épices, soda dégazé (**Ciqual**) ; pastille/capsule de sel (valeurs typiques) ;
+eau plate.
 
-Même mécanisme pour le petit-déjeuner en texte libre : on reconnaît les aliments,
-on estime les glucides, on en déduit l'état du foie au départ.
+Recherche textuelle locale sur `nom` + `synonymes`, hors ligne. Valeurs Ciqual
+issues de la **table de l'ANSES — vérifiées, jamais inventées. Si une valeur
+n'est pas vérifiable, ne pas l'écrire.** Aliment inconnu → « aucune information
+sur les valeurs nutritionnelles de cet aliment » ; le catalogue doit être assez
+complet pour que ce message reste rare.
 
 ---
 
@@ -565,6 +595,12 @@ qu'elles, jusqu'à ce qu'Antoine en valide d'autres.
 - **ANSES — table Ciqual** de composition nutritionnelle des aliments.
   Glucides, eau et sodium des familles d'aliments de `aliments.js`.
   https://ciqual.anses.fr
+- **Billat V.L. & Koralsztein J.P. (1996)**, revue sur la vitesse à VO₂max et le
+  temps d'épuisement à cette vitesse, *Sports Medicine*. Citée par
+  `docs/spec-etape5.md` pour justifier l'estimation de la VMA par un test de
+  6 minutes (demi-Cooper) ; variabilité individuelle importante (CV ≈ 25 %).
+  **Référence à vérifier au moment de la rédaction de `sources.html`** (volume,
+  pages, titre exact) — ne pas la publier avant contrôle.
 
 ---
 
