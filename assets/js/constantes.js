@@ -187,6 +187,12 @@ export const INTENSITE = Object.freeze({
     confirme: 4,
     elite: 7,
   }),
+
+  // Écart (en points) entre le plafond de soutenabilité et l'intensité
+  // demandée au-delà duquel on parle d'objectif « très en deçà » : le
+  // coureur pourrait viser nettement plus vite.
+  // // HYPOTHÈSE DE MODÉLISATION
+  ECART_TRES_EN_DECA_PCT: 20,
 });
 
 /* -------------------------------------------------------------------------- */

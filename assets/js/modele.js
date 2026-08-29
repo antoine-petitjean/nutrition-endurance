@@ -241,9 +241,9 @@ export function puissanceMetabolique({
  *   niveau: 'debutant'|'regulier'|'confirme'|'elite',
  *   vmaConnueKmh?: number|null
  * }} params
- * @returns {number} % de VO₂max, borné à PLAGES.intensitePctVO2max
+ * @returns {number} % de VO₂max, NON borné (peut dépasser 100 ou être < 50)
  */
-export function deduireIntensitePctVO2max({ vitesseMMin, niveau, vmaConnueKmh = null }) {
+export function intensiteBrutePctVO2max({ vitesseMMin, niveau, vmaConnueKmh = null }) {
   const vmaKmh =
     vmaConnueKmh && vmaConnueKmh > 0
       ? vmaConnueKmh
@@ -254,8 +254,47 @@ export function deduireIntensitePctVO2max({ vitesseMMin, niveau, vmaConnueKmh = 
   const vo2Cible = INTENSITE.ACSM_VO2_REPOS + INTENSITE.ACSM_VO2_PAR_M_MIN * vitesseMMin;
   const vo2Max = INTENSITE.ACSM_VO2_REPOS + INTENSITE.ACSM_VO2_PAR_M_MIN * vmaMMin;
 
-  const pct = vo2Max > 0 ? (100 * vo2Cible) / vo2Max : 0;
-  return borner(pct, PLAGES.intensitePctVO2max[0], PLAGES.intensitePctVO2max[1]);
+  return vo2Max > 0 ? (100 * vo2Cible) / vo2Max : 0;
+}
+
+/**
+ * Idem, borné à PLAGES.intensitePctVO2max. C'est cette valeur qui alimente le
+ * moteur ; le pourcentage BRUT sert à l'affichage du verdict et des
+ * diagnostics d'objectif.
+ * @returns {number} % de VO₂max, borné
+ */
+export function deduireIntensitePctVO2max(params) {
+  return borner(
+    intensiteBrutePctVO2max(params),
+    PLAGES.intensitePctVO2max[0],
+    PLAGES.intensitePctVO2max[1],
+  );
+}
+
+/**
+ * Estime la VMA (km/h) à partir d'une performance récente : distance et temps
+ * d'une course faite « à fond » récemment.
+ *
+ * Méthode (auto-cohérente avec le reste du modèle) :
+ *   - à cette course, le coureur a tenu `pctMaxSoutenable(tempsMin, niveau)` %
+ *     de sa VO₂max (hypothèse : une perf de course = effort au plafond de
+ *     soutenabilité pour cette durée) ;
+ *   - VO₂ à l'allure de course = 3.5 + 0.2·v (ACSM) ;
+ *   - donc VO₂max ≈ VO₂course / (pctMax/100), et la VMA est la vitesse à
+ *     laquelle VO₂ = VO₂max.
+ * `// HYPOTHÈSE DE MODÉLISATION` — à confirmer par Antoine (voir sources.html).
+ *
+ * @param {{ distanceKm: number, tempsMin: number, niveau: string }} params
+ * @returns {number|null} VMA en km/h bornée à PLAGES.vmaConnueKmh, ou null si entrée invalide
+ */
+export function estimerVmaDepuisPerf({ distanceKm, tempsMin, niveau }) {
+  if (!(distanceKm > 0) || !(tempsMin > 0)) return null;
+  const vPerfMMin = (distanceKm * 1000) / tempsMin;
+  const vo2Perf = INTENSITE.ACSM_VO2_REPOS + INTENSITE.ACSM_VO2_PAR_M_MIN * vPerfMMin;
+  const fractionSoutenue = pctMaxSoutenable({ dureeMin: tempsMin, niveau }) / 100;
+  const vo2MaxEstime = vo2Perf / fractionSoutenue;
+  const vVmaMMin = (vo2MaxEstime - INTENSITE.ACSM_VO2_REPOS) / INTENSITE.ACSM_VO2_PAR_M_MIN;
+  return borner((vVmaMMin * 60) / 1000, PLAGES.vmaConnueKmh[0], PLAGES.vmaConnueKmh[1]);
 }
 
 /**
@@ -1143,21 +1182,45 @@ export function simuler(entrees) {
    */
   const niveau = entrees.profil.niveau;
   const vmaConnueKmh = entrees.profil.vmaConnueKmh ?? null;
+  // Pourcentage BRUT (non borné) : c'est lui qu'on affiche dans le verdict et
+  // les diagnostics d'objectif — un objectif à 110 % doit se lire « 110 % ».
+  const intensiteBrutePct =
+    entrees.course.intensitePctVO2max ??
+    intensiteBrutePctVO2max({
+      vitesseMMin: entrees.course.vitesseMoyenneMPerMin,
+      niveau,
+      vmaConnueKmh,
+    });
   const plafondSoutenablePct = pctMaxSoutenable({ dureeMin: reel.dureeMin, niveau });
+  const ecartAuPlafondPct = plafondSoutenablePct - intensiteBrutePct;
+
   let objectifIrrealiste = null;
-  if (reel.dureeMin > 0 && reel.intensitePctVO2max > plafondSoutenablePct) {
+  if (reel.dureeMin > 0 && intensiteBrutePct > plafondSoutenablePct) {
     let t = reel.dureeMin;
     const tMax = reel.dureeMin * 3;
     while (t < tMax) {
       t += 1;
       const vMMin = (reel.distanceKmTotale * 1000) / t;
-      const iDeduite = deduireIntensitePctVO2max({ vitesseMMin: vMMin, niveau, vmaConnueKmh });
-      if (iDeduite <= pctMaxSoutenable({ dureeMin: t, niveau })) break;
+      const iBrute = intensiteBrutePctVO2max({ vitesseMMin: vMMin, niveau, vmaConnueKmh });
+      if (iBrute <= pctMaxSoutenable({ dureeMin: t, niveau })) break;
     }
     objectifIrrealiste = {
-      intensiteDemandee: arrondi(reel.intensitePctVO2max, 1),
+      intensiteDemandee: arrondi(intensiteBrutePct, 1),
       plafondSoutenable: arrondi(plafondSoutenablePct, 1),
       tempsRealisteMin: t,
+    };
+  }
+
+  let objectifTresEnDeca = null;
+  if (
+    reel.dureeMin > 0 &&
+    objectifIrrealiste === null &&
+    ecartAuPlafondPct > INTENSITE.ECART_TRES_EN_DECA_PCT
+  ) {
+    objectifTresEnDeca = {
+      intensiteDemandee: arrondi(intensiteBrutePct, 1),
+      plafondSoutenable: arrondi(plafondSoutenablePct, 1),
+      ecartPct: arrondi(ecartAuPlafondPct, 1),
     };
   }
 
@@ -1233,6 +1296,10 @@ export function simuler(entrees) {
       km: kmA(reel, reel.premiereDeshydratationMin),
       valeurs: { perteMasseFinalePct: arrondi(reel.perteMasseFinalePct, 1) },
     });
+  }
+  if (objectifTresEnDeca !== null) {
+    // Simple information : le coureur pourrait viser nettement plus vite.
+    diagnostics.push({ code: 'OBJECTIF_TRES_EN_DECA', gravite: 'info', ...objectifTresEnDeca });
   }
 
   return {
@@ -1314,10 +1381,13 @@ export function simuler(entrees) {
     diagnostics,
 
     synthese: {
-      // Intensité relative effectivement utilisée (déduite de l'allure).
+      // Intensité relative : celle utilisée par le moteur (bornée) et le
+      // pourcentage BRUT affiché dans le verdict.
       intensitePctVO2max: arrondi(reel.intensitePctVO2max, 1),
+      intensiteBrutePctVO2max: arrondi(intensiteBrutePct, 1),
       plafondSoutenablePct: arrondi(plafondSoutenablePct, 1),
-      objectifIrrealiste, // { intensiteDemandee, plafondSoutenable, tempsRealisteMin } | null
+      objectifIrrealiste, // { intensiteDemandee (brut), plafondSoutenable, tempsRealisteMin } | null
+      objectifTresEnDeca, // { intensiteDemandee (brut), plafondSoutenable, ecartPct } | null
       // Ce que la course COÛTE — le chiffre affiché comme « ta dépense ».
       depenseTotaleKcal: arrondi(reel.depenseCumuleeKcal[dernier], 0),
       // Ce que le coureur PEUT fournir à l'allure visée. À NE JAMAIS

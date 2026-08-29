@@ -18,6 +18,8 @@ import {
   coutEnergetiqueMinetti,
   puissanceMetabolique,
   deduireIntensitePctVO2max,
+  intensiteBrutePctVO2max,
+  estimerVmaDepuisPerf,
   pctMaxSoutenable,
   fractionGlucides,
   osmolariteApport,
@@ -158,6 +160,50 @@ for (const c of [
     deduireIntensitePctVO2max({ vitesseMMin: 220, niveau: 'regulier' }) >
       deduireIntensitePctVO2max({ vitesseMMin: 180, niveau: 'regulier' }),
   );
+  // Le pourcentage BRUT, lui, n'est pas borné.
+  verifie(
+    'pourcentage brut peut dépasser 100 %',
+    intensiteBrutePctVO2max({ vitesseMMin: 300, niveau: 'regulier' }) > 100,
+  );
+  verifie(
+    'brut et borné coïncident dans la plage normale (marathon 3h30)',
+    proche(
+      intensiteBrutePctVO2max({ vitesseMMin: vitesseMPerMinDepuisTemps(MARATHON_KM, 210), niveau: 'regulier' }),
+      deduireIntensitePctVO2max({ vitesseMMin: vitesseMPerMinDepuisTemps(MARATHON_KM, 210), niveau: 'regulier' }),
+      1e-9,
+    ),
+  );
+}
+
+// Estimation de la VMA depuis une performance récente.
+{
+  // 10 km en 45 min, régulier → VMA de l'ordre de 15 km/h.
+  const vma = estimerVmaDepuisPerf({ distanceKm: 10, tempsMin: 45, niveau: 'regulier' });
+  verifie('VMA estimée depuis un 10 km en 45 min ≈ 15 km/h', proche(vma, 15, 1.5), `${vma.toFixed(1)} km/h`);
+  // Une perf plus rapide sur la même distance → VMA plus élevée.
+  verifie(
+    'perf plus rapide → VMA estimée plus élevée',
+    estimerVmaDepuisPerf({ distanceKm: 10, tempsMin: 38, niveau: 'regulier' }) >
+      estimerVmaDepuisPerf({ distanceKm: 10, tempsMin: 45, niveau: 'regulier' }),
+  );
+  // Bornée à [8, 25] ; entrée invalide → null.
+  verifie('VMA estimée bornée à 25 km/h', estimerVmaDepuisPerf({ distanceKm: 5, tempsMin: 12, niveau: 'elite' }) <= 25);
+  verifie('perf invalide → null', estimerVmaDepuisPerf({ distanceKm: 0, tempsMin: 45, niveau: 'regulier' }) === null);
+  // Cohérence : la VMA estimée, réinjectée, redonne à peu près l'intensité
+  // au plafond de soutenabilité pour cette durée.
+  {
+    const vmaEst = estimerVmaDepuisPerf({ distanceKm: 10, tempsMin: 45, niveau: 'regulier' });
+    const iBrut = intensiteBrutePctVO2max({
+      vitesseMMin: vitesseMPerMinDepuisTemps(10, 45),
+      niveau: 'regulier',
+      vmaConnueKmh: vmaEst,
+    });
+    verifie(
+      'VMA estimée cohérente avec le plafond de soutenabilité',
+      proche(iBrut, pctMaxSoutenable({ dureeMin: 45, niveau: 'regulier' }), 0.5),
+      `${iBrut.toFixed(1)} vs ${pctMaxSoutenable({ dureeMin: 45, niveau: 'regulier' }).toFixed(1)}`,
+    );
+  }
 }
 
 /* -------------------------------------------------------------------------- */
@@ -180,6 +226,32 @@ for (const c of [
     `soutenabilité — ${c.nom} : objectif ${c.irrealiste ? 'IRRÉALISTE' : 'tenable'}`,
     intensite > plafond === c.irrealiste,
     `intensité ${intensite.toFixed(1)} vs plafond ${plafond.toFixed(1)}`,
+  );
+}
+
+// OBJECTIF_TRES_EN_DECA : régulier qui « jogge » un marathon en 5 h00, très
+// loin sous son plafond → diagnostic informatif (gravité info), en fin de liste.
+{
+  const lent = simuler({
+    profil: { sexe: 'H', masseKg: 70, tailleCm: 175, niveau: 'regulier', recharge: 'non', entrainementIntestinal: 'occasionnel', sueurSalee: 'moyen', petitDejeuner: true },
+    course: { distanceKm: MARATHON_KM, vitesseMoyenneMPerMin: vitesseMPerMinDepuisTemps(MARATHON_KM, 300) },
+    plan: [],
+  });
+  const diag = lent.diagnostics.find((d) => d.code === 'OBJECTIF_TRES_EN_DECA');
+  verifie('objectif très en deçà → diagnostic OBJECTIF_TRES_EN_DECA', diag !== undefined);
+  verifie('OBJECTIF_TRES_EN_DECA est de gravité info', diag && diag.gravite === 'info');
+  verifie('OBJECTIF_TRES_EN_DECA : écart > 20 points', diag && diag.ecartPct > 20);
+  verifie(
+    'un diagnostic info n\'est jamais en tête de liste',
+    lent.diagnostics[0].code !== 'OBJECTIF_TRES_EN_DECA',
+  );
+  verifie(
+    'marathon 3h30 régulier → pas d\'OBJECTIF_TRES_EN_DECA',
+    !simuler({
+      profil: { sexe: 'H', masseKg: 70, tailleCm: 175, niveau: 'regulier', recharge: 'non', entrainementIntestinal: 'occasionnel', sueurSalee: 'moyen', petitDejeuner: true },
+      course: { distanceKm: MARATHON_KM, vitesseMoyenneMPerMin: vitesseMPerMinDepuisTemps(MARATHON_KM, 210) },
+      plan: [],
+    }).diagnostics.some((d) => d.code === 'OBJECTIF_TRES_EN_DECA'),
   );
 }
 
